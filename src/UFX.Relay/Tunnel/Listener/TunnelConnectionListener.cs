@@ -5,7 +5,7 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel.Listener;
 
-public sealed class TunnelConnectionListener(TunnelEndpoint endpoint, ITunnelIdProvider tunnelIdProvider, ITunnelManager tunnelManager, IOptions<TunnelListenerOptions> options) : IConnectionListener
+public sealed class TunnelConnectionListener(TunnelEndpoint endpoint, ITunnelIdProvider tunnelIdProvider, ITunnelClientManager tunnelManager, IOptions<TunnelListenerOptions> options) : IConnectionListener
 {
     private readonly SemaphoreSlim getTunnelSemaphore = new(1, 1);
     private CancellationTokenSource unbindTokenSource = new();
@@ -41,7 +41,7 @@ public sealed class TunnelConnectionListener(TunnelEndpoint endpoint, ITunnelIdP
     public async Task BindAsync()
     {
         unbindTokenSource = new CancellationTokenSource();
-        endpoint.TunnelId = await tunnelIdProvider.GetTunnelIdAsync() ?? throw new KeyNotFoundException("TunnelId not found");
+        endpoint.TunnelId = await tunnelIdProvider.GetTunnelIdAsync() ?? throw new KeyNotFoundException("TunnelId not found, you need to configure a tunnel-id");
         ReconnectTunnelAsync(unbindTokenSource.Token);
     }
 
@@ -62,7 +62,7 @@ public sealed class TunnelConnectionListener(TunnelEndpoint endpoint, ITunnelIdP
                    !linkedToken.IsCancellationRequested)
             {
                 if (linkedToken.IsCancellationRequested) return;
-                endpoint.Tunnel = await tunnelManager.GetOrCreateTunnelAsync(endpoint!.TunnelId!, linkedToken);
+                endpoint.Tunnel = tunnelManager.Tunnel;
             }
 
         } 

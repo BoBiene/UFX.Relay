@@ -23,7 +23,7 @@ public static class ForwarderBuilderExtensions
         services.AddSingleton<ITunnelIdProvider, ForwarderTunnelIdProvider>();
         services.AddSingleton<TunnelForwarderHttpClientFactory>();
         services.AddSingleton<TunnelForwarderMiddleware>();
-        services.TryAddSingleton<ITunnelManager, TunnelManager>();
+        services.TryAddSingleton<ITunnelHostManager, TunnelHostManager>();
         return services;
     }
 }

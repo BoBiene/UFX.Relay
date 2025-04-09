@@ -12,4 +12,4 @@ builder.Services.AddTunnelClient(options =>
 var app = builder.Build();
 app.MapGet("/", () => builder.Environment.ApplicationName);
 app.MapGet("/client", () => "Hello from Client");
-app.Run();
+await app.RunAsync();

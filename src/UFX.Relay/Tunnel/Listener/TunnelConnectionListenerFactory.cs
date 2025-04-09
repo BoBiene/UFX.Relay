@@ -5,7 +5,7 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel.Listener;
 
-public class TunnelConnectionListenerFactory(ITunnelIdProvider tunnelIdProvider, ITunnelManager tunnelManager, IOptions<TunnelListenerOptions> options) : IConnectionListenerFactory
+public class TunnelConnectionListenerFactory(ITunnelIdProvider tunnelIdProvider, ITunnelClientManager tunnelManager, IOptions<TunnelListenerOptions> options) : IConnectionListenerFactory
 {
     public async ValueTask<IConnectionListener> BindAsync(EndPoint endpoint, CancellationToken cancellationToken = default)
     {
