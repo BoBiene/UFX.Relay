@@ -1,0 +1,85 @@
+﻿@page "/tunnel-setup"
+@using UFX.Relay.Abstractions
+@using System.Timers
+
+@inject ITunnelClientOptionsStore tunnelClientOptionsStore
+@inject ITunnelClientManager tunnelClientManager
+
+<h3>Tunnel Setup</h3>
+
+<div class="mb-3">
+    <label class="form-label">Tunnel Host</label>
+    <input class="form-control" @bind="tunnelHost" />
+</div>
+
+<div class="mb-3">
+    <label class="form-label">Tunnel ID</label>
+    <input class="form-control" @bind="tunnelId" />
+</div>
+
+<div class="form-check mb-3">
+    <input class="form-check-input" type="checkbox" id="enableTunnel" @bind="isEnabled" />
+    <label class="form-check-label" for="enableTunnel">
+        Enable Tunnel
+    </label>
+</div>
+
+<button class="btn btn-primary me-2" @onclick="Apply">Apply</button>
+
+@if (!string.IsNullOrWhiteSpace(tunnelHost) && !string.IsNullOrWhiteSpace(tunnelId) && Uri.TryCreate(tunnelHost, UriKind.Absolute, out var tunnelHostUri))
+{
+    <a class="btn btn-outline-secondary" href="@($"{(tunnelHostUri.Scheme == "wss" ? "https" : "http")}://{tunnelHostUri.Host}:{tunnelHostUri.Port}/ufx/{tunnelId}/")" target="_blank">Open Tunnel</a>
+}
+
+<hr />
+
+<div>
+    <strong>Connection State:</strong> @connectionState.ToString()
+</div>
+
+@if (!string.IsNullOrEmpty(tunnelClientManager.LastConnectErrorMessage))
+{
+    <div>
+        <strong>Message: </strong> @tunnelClientManager.LastConnectErrorMessage
+    </div>
+}
+
+@code {
+    private string? tunnelHost;
+    private string? tunnelId;
+    private bool isEnabled;
+    private TunnelConnectionState connectionState;
+
+    protected override void OnInitialized()
+    {
+        var options = tunnelClientOptionsStore.Current;
+        tunnelHost = options.TunnelHost;
+        tunnelId = options.TunnelId;
+        isEnabled = options.IsEnabled;
+
+        connectionState = tunnelClientManager.ConnectionState;
+        tunnelClientManager.ConnectionStateChanged += OnConnectionStateChanged;
+    }
+
+    private void OnConnectionStateChanged(object? sender, TunnelConnectionState newState)
+    {
+        connectionState = newState;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Apply()
+    {
+        tunnelClientOptionsStore.Update(current =>
+        {
+            current.TunnelHost = tunnelHost;
+            current.TunnelId = tunnelId;
+            current.IsEnabled = isEnabled;
+            return current;
+        });
+    }
+
+    public void Dispose()
+    {
+        tunnelClientManager.ConnectionStateChanged -= OnConnectionStateChanged;
+    }
+}
