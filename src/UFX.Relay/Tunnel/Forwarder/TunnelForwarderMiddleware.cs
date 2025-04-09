@@ -6,7 +6,7 @@ using Yarp.ReverseProxy.Transforms.Builder;
 
 namespace UFX.Relay.Tunnel.Forwarder;
 
-public class TunnelForwarderMiddleware(IHttpForwarder forwarder, TunnelForwarderHttpClientFactory clientFactory, ITransformBuilder builder, IOptions<TunnelForwarderOptions> options, ITunnelIdProvider tunnelIdProvider, ITunnelManager tunnelManager) : IMiddleware
+public class TunnelForwarderMiddleware(IHttpForwarder forwarder, TunnelForwarderHttpClientFactory clientFactory, ITransformBuilder builder, IOptions<TunnelForwarderOptions> options, ITunnelIdProvider tunnelIdProvider, ITunnelHostManager tunnelManager) : IMiddleware
 {
     private HttpTransformer? transformer;
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)

@@ -8,7 +8,7 @@ using Yarp.ReverseProxy.Forwarder;
 namespace UFX.Relay.Tunnel.Forwarder;
 
 
-public class TunnelForwarderHttpClientFactory(ITunnelManager tunnelManager, IHttpContextAccessor accessor, ITunnelIdProvider tunnelIdProvider) : IForwarderHttpClientFactory {
+public class TunnelForwarderHttpClientFactory(ITunnelHostManager tunnelManager, IHttpContextAccessor accessor, ITunnelIdProvider tunnelIdProvider) : IForwarderHttpClientFactory {
 
     //TODO: Consider creating a pool of HttpMessageInvoker instances to reuse up to the limit of a MultiplexingStream channel limit
     // effectively there should be a 1-2-1 relationship between the HttpMessageInvoker and the MultiplexingStream channel
