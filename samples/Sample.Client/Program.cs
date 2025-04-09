@@ -15,9 +15,6 @@ Console.WriteLine(@"
     UFX.Relay Sample Client gestartet
 ");
 
-
-
-
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
 builder.Services.AddTunnelClient(options =>

@@ -47,9 +47,6 @@ namespace Sample.Blazor
                 app.UseHsts();
             }
 
-
-         
-
             // !-- IMPORTANT: This must be done to ensure that the app works behind our reverse proxy (tunnel) --
             // Enable Forwarded Headers for reverse proxy scenarios
             app.UseForwardedHeaders(new ForwardedHeadersOptions

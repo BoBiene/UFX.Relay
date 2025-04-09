@@ -23,17 +23,15 @@ Console.WriteLine(@"
 
 var builder = WebApplication.CreateBuilder(args);
 
-PathPrefixTransformer prefixTransformer = new PathPrefixTransformer("ufx");
+TunnelPathPrefixTransformer prefixTransformer = new("ufx");
 builder.Services.AddTunnelForwarder(options =>
 {
     options.DefaultTunnelId = "123";
     options.TunnelIdFromContext = prefixTransformer.GetTunnelIdFromContext;
-
-    options.Transformer = (TransformBuilderContext context) =>
+    options.Transformer = context =>
     {
-        // Remove /tunnel/{tunnelId} from the request path before forwarding
+        // Remove /ufx/{tunnelId} from the request path before forwarding
         context.RequestTransforms.Add(prefixTransformer);
-        //context.RequestTransforms.Add(new RequestHeaderXForwardedPrefixTransform("X-Forwarded-Prefix", ForwardedTransformActions.Set));
     };
 });
 var app = builder.Build();
