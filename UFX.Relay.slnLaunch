@@ -1,0 +1,42 @@
+[
+  {
+    "Name": "Aggregator sample",
+    "Projects": [
+      {
+        "Path": "samples\\Aggregation\\Sample.Aggregate.OnPrem\\Sample.Aggregate.OnPrem.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      },
+      {
+        "Path": "samples\\Aggregation\\Sample.Aggregate.Cloud\\Sample.Aggregate.Cloud.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      },
+      {
+        "Path": "samples\\Aggregation\\Sample.Aggregate.Client\\Sample.Aggregate.Client.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      }
+    ]
+  },
+  {
+    "Name": "Samples",
+    "Projects": [
+      {
+        "Path": "samples\\Sample.Server\\Sample.Server.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      },
+      {
+        "Path": "samples\\Sample.Client\\Sample.Client.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      },
+      {
+        "Path": "samples\\Sample.Blazor\\Sample.Blazor.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      }
+    ]
+  }
+]

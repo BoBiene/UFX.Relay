@@ -1,10 +1,5 @@
-﻿using System.Text.RegularExpressions;
-using UFX.Relay.Tunnel;
+﻿using UFX.Relay.Tunnel;
 using UFX.Relay.Tunnel.Forwarder;
-using Yarp.ReverseProxy.Transforms;
-using Yarp.ReverseProxy.Transforms.Builder;
-
-
 
 
 Console.WriteLine(@"
@@ -17,7 +12,7 @@ Console.WriteLine(@"
 ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝
                                                  
 
-    UFX.Relay Sample Server gestartet
+    UFX.Relay Sample Server started
 ");
 
 
