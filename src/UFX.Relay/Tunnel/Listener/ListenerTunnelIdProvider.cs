@@ -1,14 +1,15 @@
+using Microsoft.Extensions.Options;
 using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel.Listener;
 
-public class ListenerTunnelIdProvider(TunnelListenerOptions listenerOptions, TunnelClientOptions? clientOptions) : ITunnelIdProvider
+public class ListenerTunnelIdProvider(IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientOptionsStore clientOptionsStore) : ITunnelIdProvider
 {
     public ValueTask<string?> GetTunnelIdAsync()
     {
         return new ValueTask<string?>(
-            listenerOptions.DefaultTunnelId 
-            ?? clientOptions?.TunnelId 
-            ?? (clientOptions?.TunnelHost != null ? new Uri(clientOptions.TunnelHost).GetTunnelIdFromHost() : null));
+            listenerOptions.Value.DefaultTunnelId
+            ?? clientOptionsStore.Current.TunnelId
+            ?? (clientOptionsStore.Current.TunnelHost != null ? new Uri(clientOptionsStore.Current.TunnelHost).GetTunnelIdFromHost() : null));
     }
 }

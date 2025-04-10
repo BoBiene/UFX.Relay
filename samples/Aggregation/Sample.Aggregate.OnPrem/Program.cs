@@ -18,7 +18,7 @@ Console.WriteLine(@"
 ");
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddTunnelForwarder(options => 
+builder.Services.AddAggregatedTunnelForwarder(options => 
 {
     options.DefaultTunnelId = "123"; 
 });

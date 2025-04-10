@@ -24,7 +24,7 @@ public static class ListenerBuilderExtensions
         {
             options.ListenOnTunnel();
             var urls = builder.GetSetting(WebHostDefaults.ServerUrlsKey)?.Split(';', StringSplitOptions.TrimEntries);
-            if (includeDefaultUrls && urls is {Length: > 0}) options.ListenOnUrls(urls);
+            if (includeDefaultUrls && urls is { Length: > 0 }) options.ListenOnUrls(urls);
         });
         builder.ConfigureServices(services =>
         {
@@ -32,27 +32,29 @@ public static class ListenerBuilderExtensions
         });
         return builder;
     }
-    
+
     private static IServiceCollection AddTunnelListener(this IServiceCollection services, Action<TunnelListenerOptions>? tunnelOptions = null)
     {
-        if(tunnelOptions != null) services.Configure(tunnelOptions);
-        services.TryAddSingleton<ITunnelIdProvider>(provider => 
-            new ListenerTunnelIdProvider(provider.GetRequiredService<IOptions<TunnelListenerOptions>>().Value,provider.GetService<TunnelClientOptions>()));
-        services.TryAddSingleton<ITunnelManager, TunnelManager>();
+        if (tunnelOptions != null)
+            services.Configure(tunnelOptions);
+
+        services.TryAddSingleton<ITunnelIdProvider, ListenerTunnelIdProvider>();
+        services.TryAddSingleton<ITunnelClientManager, TunnelClientManager>();
         services.TryAddSingleton<SocketTransportFactory>();
-        services.TryAddSingleton(provider => 
-            new TunnelConnectionListenerFactory(provider.GetRequiredService<ITunnelIdProvider>(),provider.GetRequiredService<ITunnelManager>(), provider.GetRequiredService<IOptions<TunnelListenerOptions>>()));
+        services.TryAddSingleton(provider =>
+            new TunnelConnectionListenerFactory(provider.GetRequiredService<ITunnelIdProvider>(), provider.GetRequiredService<ITunnelClientManager>(), provider.GetRequiredService<IOptions<TunnelListenerOptions>>()));
         services.AddSingleton<IConnectionListenerFactory, TunnelCompositeTransportFactory>();
         return services;
     }
-    
-    private static KestrelServerOptions ListenOnTunnel(this KestrelServerOptions options) {
+
+    private static KestrelServerOptions ListenOnTunnel(this KestrelServerOptions options)
+    {
         ArgumentNullException.ThrowIfNull(options);
         options.Listen(new TunnelEndpoint());
         logger.LogInformation("Added listener endpoint: tunnel://");
         return options;
     }
-    
+
     private static KestrelServerOptions ListenOnUrls(this KestrelServerOptions options, params string[] urls)
     {
         foreach (var url in urls)
@@ -75,7 +77,7 @@ public static class ListenerBuilderExtensions
             {
                 try
                 {
-                    if(uri.Scheme == Uri.UriSchemeHttps) listenOptions.UseHttps();
+                    if (uri.Scheme == Uri.UriSchemeHttps) listenOptions.UseHttps();
                 }
                 catch (Exception e)
                 {
@@ -83,5 +85,5 @@ public static class ListenerBuilderExtensions
                 }
             };
         }
-    }    
+    }
 }

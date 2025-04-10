@@ -1,6 +1,19 @@
-
+﻿
 using UFX.Relay.Tunnel;
 using UFX.Relay.Tunnel.Listener;
+
+Console.WriteLine(@"
+
+ ██████╗██╗     ██╗███████╗███╗   ██╗████████╗
+██╔════╝██║     ██║██╔════╝████╗  ██║╚══██╔══╝
+██║     ██║     ██║█████╗  ██╔██╗ ██║   ██║   
+██║     ██║     ██║██╔══╝  ██║╚██╗██║   ██║   
+╚██████╗███████╗██║███████╗██║ ╚████║   ██║   
+ ╚═════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝   
+                                              
+
+    UFX.Relay Sample Client started
+");
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
@@ -10,6 +23,7 @@ builder.Services.AddTunnelClient(options =>
     options.TunnelId = "123";
 });
 var app = builder.Build();
+
 app.MapGet("/", () => builder.Environment.ApplicationName);
 app.MapGet("/client", () => "Hello from Client");
-app.Run();
+await app.RunAsync();

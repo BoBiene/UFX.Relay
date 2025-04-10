@@ -16,14 +16,30 @@ public static class ForwarderBuilderExtensions
 
     public static IServiceCollection AddTunnelForwarder(this IServiceCollection services, Action<TunnelForwarderOptions>? forwarderOptions = null)
     {
-        if(forwarderOptions != null) services.Configure(forwarderOptions);
+        services.AddTunnelForwarderInternal(forwarderOptions);
+        services.TryAddSingleton<ITunnelClientFactory, HostTunnelClientFactory>();
+        services.TryAddSingleton<ITunnelHostManager, TunnelHostManager>();
+        return services;
+    }
+
+    public static IServiceCollection AddAggregatedTunnelForwarder(this IServiceCollection services, Action<TunnelForwarderOptions>? forwarderOptions = null)
+    {
+        services.AddTunnelForwarderInternal(forwarderOptions);
+        services.TryAddSingleton<ITunnelHostManager, TunnelHostAggregatedManager>();
+        return services;
+    }
+
+    private static IServiceCollection AddTunnelForwarderInternal(this IServiceCollection services, Action<TunnelForwarderOptions>? forwarderOptions = null)
+    {
+        if (forwarderOptions != null) services.Configure(forwarderOptions);
         services.AddHttpForwarder();
         services.AddHttpContextAccessor();
-        services.TryAddSingleton<ITunnelClientFactory, HostTunnelClientFactory>();
+        
         services.AddSingleton<ITunnelIdProvider, ForwarderTunnelIdProvider>();
         services.AddSingleton<TunnelForwarderHttpClientFactory>();
         services.AddSingleton<TunnelForwarderMiddleware>();
-        services.TryAddSingleton<ITunnelManager, TunnelManager>();
+
         return services;
     }
+
 }
