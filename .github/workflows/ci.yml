@@ -15,6 +15,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+            fetch-depth: 0 # avoid shallow clone so nbgv can do its work.
+      - uses: dotnet/nbgv@master
+        id: nbgv
+        with:
+          setAllVars: true
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -25,8 +31,19 @@ jobs:
         run: dotnet build --no-restore --configuration Release
       - name: Test
         run: dotnet test --no-build --verbosity normal --configuration Release
+      - name: Pack All Projects
+        run: dotnet pack --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+      - name: Push to GitHub Packages
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          dotnet nuget push **/Release/*.nupkg --skip-duplicate \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
   docker:
     runs-on: ubuntu-latest
+    # only run if in 'unifiedfx/UFX.Relay' -> fix for forked repos
+    if: ${{ github.repository == 'unifiedfx/UFX.Relay' }}
     steps:
       -
         name: Set up QEMU
