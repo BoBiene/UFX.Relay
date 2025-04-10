@@ -31,7 +31,7 @@ namespace UFX.Relay.Tunnel
         public TunnelClientManager(ITunnelClientOptionsStore optionsStore, IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientFactory tunnelClientFactory, ILogger<TunnelClientManager> logger)
         {
             _optionsStore = optionsStore;
-            _listenerOptions = listenerOptions; ;
+            _listenerOptions = listenerOptions;
             _tunnelClientFactory = tunnelClientFactory;
             _logger = logger;
 

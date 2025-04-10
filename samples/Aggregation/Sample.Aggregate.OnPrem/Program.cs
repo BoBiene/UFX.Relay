@@ -18,14 +18,14 @@ Console.WriteLine(@"
 ");
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddTunnelForwarder(options => 
+builder.Services.AddAggregatedTunnelForwarder(options => 
 {
-    options.DefaultTunnelId = "123"; 
+  //  options.DefaultTunnelId = "123"; 
 });
 builder.Services.AddTunnelClient(options =>
 {
     options.TunnelHost = "wss://localhost:7400";
-    options.TunnelId = "123";
+    options.TunnelId = "on-prem-aggregator";
 });
 var app = builder.Build();
 app.MapTunnelForwarder();

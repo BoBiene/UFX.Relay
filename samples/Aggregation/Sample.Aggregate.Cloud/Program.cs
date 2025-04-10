@@ -19,10 +19,7 @@ Console.WriteLine(@"
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddTunnelForwarder(options =>
-{
-    options.DefaultTunnelId = "123";
-});
+builder.Services.AddTunnelForwarder();
 var app = builder.Build();
 app.MapTunnelHost();
 await app.RunAsync();

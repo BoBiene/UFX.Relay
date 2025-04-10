@@ -7,8 +7,8 @@ namespace UFX.Relay.Tunnel;
 
 public class TunnelHostManager(ILogger<TunnelHostManager> logger) : ITunnelHostManager
 {
-    private readonly ConcurrentDictionary<string, Tunnel> tunnels = new();
-    public Task<Tunnel?> GetOrCreateTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
+    protected readonly ConcurrentDictionary<string, Tunnel> tunnels = new();
+    public virtual Task<Tunnel?> GetOrCreateTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
     {
         if (tunnels.TryGetValue(tunnelId, out var existingTunnel))
             return Task.FromResult<Tunnel?>(existingTunnel);
