@@ -7,7 +7,7 @@ namespace Sample.Blazor
 {
     public static class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             Console.WriteLine(@"
 
@@ -32,7 +32,7 @@ namespace Sample.Blazor
             builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
             builder.Services.AddTunnelClient(options =>
             {
-                options.TunnelHost = "wss://localhost:7200"; 
+                options.TunnelHost = "wss://localhost:7200";
                 options.TunnelId = "BlazorSample";
                 options.IsEnabled = false;
             });
@@ -59,15 +59,13 @@ namespace Sample.Blazor
 
             app.UseHttpsRedirection();
 
+            app.UseStaticFiles();
             app.UseAntiforgery();
 
-            app.MapStaticAssets();
             app.MapRazorComponents<App>()
                 .AddInteractiveServerRenderMode();
 
-         
-
-            app.Run();
+            await app.RunAsync();
         }
     }
 }
