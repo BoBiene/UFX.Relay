@@ -34,7 +34,7 @@ jobs:
       - name: Pack All Projects
         run: dotnet pack --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
       - name: Push to GitHub Packages
-        # if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' }}
         run: |
           dotnet nuget push **/Release/*.nupkg --skip-duplicate \
             --api-key ${{ secrets.GITHUB_TOKEN }} \
