@@ -1,8 +1,5 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.35906.104
-MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UFX.Relay", "src\UFX.Relay\UFX.Relay.csproj", "{0F17BEA7-9BE1-4B6E-A49E-C46D27667128}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sample.Server", "samples\Sample.Server\Sample.Server.csproj", "{303F63AD-4FD9-4054-8DC8-0D411E2130A7}"
