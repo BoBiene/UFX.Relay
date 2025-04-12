@@ -8,12 +8,31 @@ namespace UFX.Relay.Tunnel;
 public class TunnelHostManager(ILogger<TunnelHostManager> logger) : ITunnelHostManager
 {
     protected readonly ConcurrentDictionary<string, Tunnel> tunnels = new();
+
+    public IEnumerable<Tunnel> GetConnectedTunnels(CancellationToken cancellationToken = default)
+    {
+        foreach (var tunnel in tunnels.Values)
+        {
+            if (tunnel.IsConnected)
+                yield return tunnel;
+        }
+    }
+
     public virtual Task<Tunnel?> GetOrCreateTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
+        => GetTunnelAsync(tunnelId, cancellationToken: cancellationToken);
+
+    public Task<Tunnel?> GetTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
     {
         if (tunnels.TryGetValue(tunnelId, out var existingTunnel))
             return Task.FromResult<Tunnel?>(existingTunnel);
 
         return Task.FromResult<Tunnel?>(null);
+    }
+
+    public async Task<bool> IsTunnelConnectedAsync(string tunnelId, CancellationToken cancellationToken = default)
+    {
+        var tunnel = await GetTunnelAsync(tunnelId, cancellationToken);
+        return tunnel?.IsConnected == true;
     }
 
     public async Task StartTunnelAsync(HttpContext context, string tunnelId, CancellationToken cancellationToken = default)
