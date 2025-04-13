@@ -5,38 +5,22 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel;
 
-public class TunnelHostManager(ILogger<TunnelHostManager> logger) : ITunnelHostManager
+public class TunnelHostManager(ILogger<TunnelHostManager> logger, ITunnelCollectionProvider tunnelCollectionProvider) : ITunnelHostManager
 {
-    protected readonly ConcurrentDictionary<string, Tunnel> tunnels = new();
-
-    public IEnumerable<Tunnel> GetConnectedTunnels(CancellationToken cancellationToken = default)
+    public virtual async Task<Tunnel?> GetOrCreateTunnelAsync(HttpContext context, string tunnelId, CancellationToken cancellationToken = default)
     {
-        foreach (var tunnel in tunnels.Values)
-        {
-            if (tunnel.IsConnected)
-                yield return tunnel;
-        }
+        var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken);
+        if (tunnels.TryGetTunnel(tunnelId, out var existingTunnel))
+            return existingTunnel;
+
+        return null;
     }
 
-    public virtual Task<Tunnel?> GetOrCreateTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
-        => GetTunnelAsync(tunnelId, cancellationToken: cancellationToken);
-
-    public Task<Tunnel?> GetTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
-    {
-        if (tunnels.TryGetValue(tunnelId, out var existingTunnel))
-            return Task.FromResult<Tunnel?>(existingTunnel);
-
-        return Task.FromResult<Tunnel?>(null);
-    }
-
-    public async Task<bool> IsTunnelConnectedAsync(string tunnelId, CancellationToken cancellationToken = default)
-    {
-        var tunnel = await GetTunnelAsync(tunnelId, cancellationToken);
-        return tunnel?.IsConnected == true;
-    }
 
     public async Task StartTunnelAsync(HttpContext context, string tunnelId, CancellationToken cancellationToken = default)
     {
+        var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken);
+
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
         await using var stream = await MultiplexingStream.CreateAsync(webSocket.AsStream(), new MultiplexingStream.Options
         {
@@ -59,7 +43,7 @@ public class TunnelHostManager(ILogger<TunnelHostManager> logger) : ITunnelHostM
         }
         finally
         {
-            tunnels.TryRemove(new KeyValuePair<string, Tunnel>(tunnelId, tunnel));
+            tunnels.TryRemoveTunnel((tunnelId, tunnel));
             logger.LogDebug("Tunnel disconnected: {TunnelId} from {RemoteIpAddress}:{RemotePort}", tunnelId, context.Connection.RemoteIpAddress, context.Connection.RemotePort);
         }
     }
