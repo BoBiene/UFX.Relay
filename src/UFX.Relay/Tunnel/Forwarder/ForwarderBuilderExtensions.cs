@@ -34,10 +34,11 @@ public static class ForwarderBuilderExtensions
         if (forwarderOptions != null) services.Configure(forwarderOptions);
         services.AddHttpForwarder();
         services.AddHttpContextAccessor();
-        
+
         services.AddSingleton<ITunnelIdProvider, ForwarderTunnelIdProvider>();
         services.AddSingleton<TunnelForwarderHttpClientFactory>();
         services.AddSingleton<TunnelForwarderMiddleware>();
+        services.TryAddSingleton<ITunnelCollectionProvider, TunnelCollection>();
 
         return services;
     }

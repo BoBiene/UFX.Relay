@@ -6,13 +6,27 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel
 {
-    public class TunnelHostAggregatedManager(ILogger<TunnelHostAggregatedManager> logger, ITunnelClientFactory tunnelClientFactory) 
-        : TunnelHostManager(logger)
+    public class TunnelHostAggregatedManager : TunnelHostManager
     {
+        private readonly ILogger<TunnelHostAggregatedManager> logger;
+        private readonly ITunnelClientFactory tunnelClientFactory;
+        private readonly ITunnelCollectionProvider tunnelCollectionProvider;
 
-        public override async Task<Tunnel?> GetOrCreateTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
+        public TunnelHostAggregatedManager(
+            ILogger<TunnelHostAggregatedManager> logger,
+            ITunnelCollectionProvider tunnelCollectionProvider,
+            ITunnelClientFactory tunnelClientFactory)
+            : base(logger, tunnelCollectionProvider)
         {
-            if (tunnels.TryGetValue(tunnelId, out var existingTunnel)) return existingTunnel;
+            this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            this.tunnelCollectionProvider = tunnelCollectionProvider ?? throw new ArgumentNullException(nameof(tunnelCollectionProvider));
+            this.tunnelClientFactory = tunnelClientFactory ?? throw new ArgumentNullException(nameof(tunnelClientFactory));
+        }
+
+        public override async Task<Tunnel?> GetOrCreateTunnelAsync(HttpContext context, string tunnelId, CancellationToken cancellationToken = default)
+        {
+            var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken);
+            if (tunnels.TryGetTunnel(tunnelId, out var existingTunnel)) return existingTunnel;
             if (tunnelClientFactory == null) return null;
             var websocket = await tunnelClientFactory.CreateAsync();
             if (websocket == null) return null;
@@ -32,7 +46,7 @@ namespace UFX.Relay.Tunnel
                 }
                 catch (WebSocketException ex)
                 {
-                    logger.LogDebug("Websocket Error: {Uri}, {Message}", uri, ex.Message);
+                    logger.LogDebug(ex, "Websocket Error: {Uri}, {Message}", uri, ex.Message);
                     await Task.Delay(5000, cancellationToken).ConfigureAwait(false);
                     websocket = await tunnelClientFactory.CreateAsync() ?? throw new NullReferenceException("Websocket is null");
                 }
@@ -47,7 +61,7 @@ namespace UFX.Relay.Tunnel
             tunnel.Completion.ContinueWith(_ =>
             {
                 logger.LogDebug("Removing tunnel {TunnelId}, uri: {Uri}", tunnelId, uri);
-                return tunnels.TryRemove(new KeyValuePair<string, Tunnel>(tunnelId, tunnel));
+                return tunnels.TryRemoveTunnel((tunnelId, tunnel));
             }, TaskScheduler.Default);
             return tunnels.GetOrAdd(tunnelId, tunnel);
         }

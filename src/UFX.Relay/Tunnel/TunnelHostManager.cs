@@ -5,19 +5,22 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel;
 
-public class TunnelHostManager(ILogger<TunnelHostManager> logger) : ITunnelHostManager
+public class TunnelHostManager(ILogger<TunnelHostManager> logger, ITunnelCollectionProvider tunnelCollectionProvider) : ITunnelHostManager
 {
-    protected readonly ConcurrentDictionary<string, Tunnel> tunnels = new();
-    public virtual Task<Tunnel?> GetOrCreateTunnelAsync(string tunnelId, CancellationToken cancellationToken = default)
+    public virtual async Task<Tunnel?> GetOrCreateTunnelAsync(HttpContext context, string tunnelId, CancellationToken cancellationToken = default)
     {
-        if (tunnels.TryGetValue(tunnelId, out var existingTunnel))
-            return Task.FromResult<Tunnel?>(existingTunnel);
+        var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken);
+        if (tunnels.TryGetTunnel(tunnelId, out var existingTunnel))
+            return existingTunnel;
 
-        return Task.FromResult<Tunnel?>(null);
+        return null;
     }
+
 
     public async Task StartTunnelAsync(HttpContext context, string tunnelId, CancellationToken cancellationToken = default)
     {
+        var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken);
+
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
         await using var stream = await MultiplexingStream.CreateAsync(webSocket.AsStream(), new MultiplexingStream.Options
         {
@@ -40,7 +43,7 @@ public class TunnelHostManager(ILogger<TunnelHostManager> logger) : ITunnelHostM
         }
         finally
         {
-            tunnels.TryRemove(new KeyValuePair<string, Tunnel>(tunnelId, tunnel));
+            tunnels.TryRemoveTunnel((tunnelId, tunnel));
             logger.LogDebug("Tunnel disconnected: {TunnelId} from {RemoteIpAddress}:{RemotePort}", tunnelId, context.Connection.RemoteIpAddress, context.Connection.RemotePort);
         }
     }

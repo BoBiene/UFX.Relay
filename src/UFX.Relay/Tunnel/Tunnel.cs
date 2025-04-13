@@ -11,37 +11,39 @@ public class Tunnel(MultiplexingStream stream) : IAsyncDisposable, IDisposable
     private readonly Channel<MultiplexingStream.Channel> channels = Channel.CreateUnbounded<MultiplexingStream.Channel>();
     private MultiplexingStream? stream = stream;
 
+    public bool IsConnected => stream?.Completion.IsCompleted != true;
+
     public async Task<MultiplexingStream.Channel> GetChannelAsync(string? channelId, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(stream, nameof(stream));
+        if (stream == null)  throw new ObjectDisposedException(nameof(stream));
         if (channelId == null) return await GetChannelAsync(cancellationToken);
         var channel = await stream.OfferChannelAsync(channelId, cancellationToken);
         return channel;
     }
     public async Task<MultiplexingStream.Channel> GetChannelAsync(CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(stream, nameof(stream));
+        if (stream == null) throw new ObjectDisposedException(nameof(stream));
         lock (channels)
         {
-            if(!channelOfferedSubscribed) stream.ChannelOffered += StreamOnChannelOffered;
+            if (!channelOfferedSubscribed) stream.ChannelOffered += StreamOnChannelOffered;
             channelOfferedSubscribed = true;
         }
-        
+
         var channelResult = channels.Reader.ReadAsync(cancellationToken).AsTask();
-        var streamCompletion = stream.Completion; 
+        var streamCompletion = stream.Completion;
 #pragma warning disable VSTHRD003 // Waiting on (Completion) task outside context
         await Task.WhenAny(streamCompletion, channelResult);
 #pragma warning restore VSTHRD003 // Waiting on (Completion) task outside context
 
         // 'stream.Completion' indicates that the underlying stream closed first:
         if (streamCompletion.IsCompleted) throw new UnderlyingStreamClosedException();
-        
+
         return await channelResult;
     }
 
     private async void StreamOnChannelOffered(object? sender, MultiplexingStream.ChannelOfferEventArgs e)
     {
-        ArgumentNullException.ThrowIfNull(stream, nameof(stream));
+        if (stream == null) throw new ObjectDisposedException(nameof(stream));
         var channel = await stream.AcceptChannelAsync(e.Name);
         await channels.Writer.WriteAsync(channel);
     }
@@ -53,7 +55,7 @@ public class Tunnel(MultiplexingStream stream) : IAsyncDisposable, IDisposable
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
-    
+
     public async ValueTask DisposeAsync()
     {
         await DisposeAsyncCore().ConfigureAwait(false);
