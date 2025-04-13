@@ -36,7 +36,7 @@ namespace UFX.Relay.Tunnel
         IEnumerator IEnumerable.GetEnumerator()
             => GetEnumerator();
 
-        public Task<ITunnelCollection> GetTunnelCollectionAsync(HttpContext context, CancellationToken cancellationToken = default)
+        public virtual Task<ITunnelCollection> GetTunnelCollectionAsync(HttpContext context, CancellationToken cancellationToken = default)
         {
             return Task.FromResult<ITunnelCollection>(this);
         }
