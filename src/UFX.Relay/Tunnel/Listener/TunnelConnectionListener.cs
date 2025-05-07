@@ -56,17 +56,18 @@ public sealed class TunnelConnectionListener(TunnelEndpoint endpoint, ITunnelIdP
         var linkedToken = CancellationTokenSource
             .CreateLinkedTokenSource(unbindTokenSource.Token, cancellationToken).Token;
         await getTunnelSemaphore.WaitAsync(linkedToken);
-        if (endpoint.Tunnel is not {Completion.IsCompleted: false} && !linkedToken.IsCancellationRequested)
+        try
         {
-            while ((endpoint.Tunnel == null || endpoint.Tunnel.Completion.IsCompleted) &&
-                   !linkedToken.IsCancellationRequested)
+            while (endpoint.Tunnel is not { Completion.IsCompleted: false })
             {
-                if (linkedToken.IsCancellationRequested) return;
                 endpoint.Tunnel = tunnelManager.Tunnel;
+                await Task.Delay(50, linkedToken);
             }
-
-        } 
-        getTunnelSemaphore.Release();
+        }
+        finally
+        {
+            getTunnelSemaphore.Release();
+        }
     }
     private async Task ReconnectTunnelAsync(CancellationToken cancellationToken = default)
     {
