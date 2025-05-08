@@ -100,8 +100,8 @@ namespace UFX.Relay.Tunnel
                 if (websocket == null)
                 {
                     _logger.LogWarning("WebSocket creation failed (TunnelClientFactory returned null).");
-                    UpdateState(TunnelConnectionState.Error);
                     await SetTunnelAsync(null);
+                    UpdateState(TunnelConnectionState.Error);
                 }
                 else
                 {
@@ -171,8 +171,8 @@ namespace UFX.Relay.Tunnel
             }
             catch
             {
-                UpdateState(TunnelConnectionState.Error);
                 await SetTunnelAsync(null);
+                UpdateState(TunnelConnectionState.Error);
             }
         }
 
