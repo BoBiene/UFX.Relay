@@ -53,6 +53,8 @@ namespace UFX.Relay.Tunnel
 
         public TunnelConnectionState ConnectionState => _state;
 
+        public bool IsEnabled => _optionsStore.Current.IsEnabled;
+
         private async void ReconnectLoop(object? state)
         {
             if (_optionsChanged)
