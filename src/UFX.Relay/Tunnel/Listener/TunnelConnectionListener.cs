@@ -5,79 +5,103 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel.Listener;
 
-public sealed class TunnelConnectionListener(TunnelEndpoint endpoint, ITunnelIdProvider tunnelIdProvider, ITunnelClientManager tunnelManager, IOptions<TunnelListenerOptions> options) : IConnectionListener
+public sealed class TunnelConnectionListener : IConnectionListener
 {
-    private readonly SemaphoreSlim getTunnelSemaphore = new(1, 1);
-    private CancellationTokenSource unbindTokenSource = new();
-    public EndPoint EndPoint => endpoint;
+    private readonly TunnelEndpoint _endpoint;
+    private readonly ITunnelIdProvider _tunnelIdProvider;
+    private readonly ITunnelClientManager _tunnelManager;
+    private readonly IOptions<TunnelListenerOptions> _options;
+    private readonly ILogger<TunnelConnectionListener> _logger;
+    private CancellationTokenSource _unbindTokenSource = new();
+    public EndPoint EndPoint => _endpoint;
+
+    public TunnelConnectionListener(
+        TunnelEndpoint endpoint,
+        ITunnelIdProvider tunnelIdProvider,
+        ITunnelClientManager tunnelManager,
+        IOptions<TunnelListenerOptions> options,
+        ILogger<TunnelConnectionListener> logger)
+    {
+        _endpoint = endpoint;
+        _tunnelIdProvider = tunnelIdProvider;
+        _tunnelManager = tunnelManager;
+        _options = options;
+        _logger = logger;
+
+        endpoint.TunnelClientManager = tunnelManager;
+    }
+
+
 
     public async ValueTask<ConnectionContext?> AcceptAsync(CancellationToken cancellationToken = default)
     {
-        var linkedToken = CancellationTokenSource
-            .CreateLinkedTokenSource(unbindTokenSource.Token, cancellationToken)
-            .Token;
-        
-        while (! linkedToken.IsCancellationRequested)
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_unbindTokenSource.Token, cancellationToken);
+        var linkedToken = linkedCts.Token;
+
+        while (!linkedToken.IsCancellationRequested)
         {
-            await GetTunnelAsync(linkedToken);
-            if (endpoint.Tunnel == null) return null;
-            try
+            if (!_tunnelManager.IsEnabled)
             {
-                var channel = await endpoint.Tunnel
-                    .GetChannelAsync(endpoint.Tunnel is TunnelHost ? Guid.NewGuid().ToString("N") : null, linkedToken);
-                return new TunnelConnectionContext(channel.QualifiedId.ToString(), channel, endpoint);
+                //tunnel is disabled, wait for it to be enabled
+                await Task.Delay(_options.Value.DelayWhenDisabled, linkedToken);
             }
-            catch (UnderlyingStreamClosedException)
+            else if (_tunnelManager.ConnectionState != TunnelConnectionState.Connected)
             {
-                // The WebSocket stream closed underneath us while waiting for the channel:
-                continue;
+                //tunnel is disconnected, wait for it to be connected
+                await Task.Delay(_options.Value.DelayWhenDisconnected, linkedToken);
+            }
+            else
+            {
+                var tunnel = _endpoint.Tunnel;
+                if (tunnel == null || tunnel.Completion.Status == TaskStatus.RanToCompletion)
+                {
+                    _logger.LogWarning("No tunnel available ({Tunnel}, {TunnelStatus})", tunnel, tunnel?.Completion.Status);
+                    await Task.Delay(_options.Value.DelayWhenDisconnected, linkedToken);
+                }
+                else
+                {
+                    try
+                    {
+                        var channel = await tunnel.GetChannelAsync(tunnel is TunnelHost ? Guid.NewGuid().ToString("N") : null, linkedToken);
+                        return new TunnelConnectionContext(channel.QualifiedId.ToString(), channel, _endpoint);
+                    }
+                    catch (UnderlyingStreamClosedException uscx)
+                    {
+                        _logger.LogDebug(uscx, "Underlying stream closed while waiting for channel.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Unexpected error in AcceptAsync.");
+                    }
+                }
             }
         }
 
-        // Fall through to here if caller cancelled, or Listener was ‘unbound’:
         return null;
     }
-    
+
     public async Task BindAsync()
     {
-        unbindTokenSource = new CancellationTokenSource();
-        endpoint.TunnelId = await tunnelIdProvider.GetTunnelIdAsync() ?? throw new KeyNotFoundException("TunnelId not found, you need to configure a tunnel-id");
-        ReconnectTunnelAsync(unbindTokenSource.Token);
+        var oldToken = _unbindTokenSource;
+        _unbindTokenSource = new CancellationTokenSource();
+        oldToken.Dispose(); // 🔧 Dispose old source
+
+        _endpoint.TunnelId = await _tunnelIdProvider.GetTunnelIdAsync()
+            ?? throw new KeyNotFoundException("TunnelId not found, you need to configure a tunnel-id");
     }
 
     public async ValueTask UnbindAsync(CancellationToken cancellationToken = default)
     {
-        await unbindTokenSource.CancelAsync();
-        if(endpoint.Tunnel is not null) await endpoint.Tunnel.DisposeAsync();
-    }
-    private async ValueTask GetTunnelAsync(CancellationToken cancellationToken = default)
-    {
-        if (endpoint.Tunnel is {Completion.IsCompleted: false}) return;
-        var linkedToken = CancellationTokenSource
-            .CreateLinkedTokenSource(unbindTokenSource.Token, cancellationToken).Token;
-        await getTunnelSemaphore.WaitAsync(linkedToken);
-        try
+        await _unbindTokenSource.CancelAsync();
+        if (_endpoint.Tunnel is not null)
         {
-            while (endpoint.Tunnel is not { Completion.IsCompleted: false })
-            {
-                endpoint.Tunnel = tunnelManager.Tunnel;
-                await Task.Delay(50, linkedToken);
-            }
-        }
-        finally
-        {
-            getTunnelSemaphore.Release();
+            await _endpoint.Tunnel.DisposeAsync();
         }
     }
-    private async Task ReconnectTunnelAsync(CancellationToken cancellationToken = default)
-    {
-        var timer = new PeriodicTimer(options.Value.ReconnectInterval);
-        while (await timer.WaitForNextTickAsync(cancellationToken)) await GetTunnelAsync(cancellationToken);
-    }
-    
+
     public async ValueTask DisposeAsync()
     {
-        if (endpoint.Tunnel == null) return;
-        await endpoint.Tunnel.DisposeAsync();
+        await UnbindAsync();
+        _unbindTokenSource.Dispose();
     }
 }

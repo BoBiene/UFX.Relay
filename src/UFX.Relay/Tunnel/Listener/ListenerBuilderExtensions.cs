@@ -41,8 +41,7 @@ public static class ListenerBuilderExtensions
         services.TryAddSingleton<ITunnelIdProvider, ListenerTunnelIdProvider>();
         services.TryAddSingleton<ITunnelClientManager, TunnelClientManager>();
         services.TryAddSingleton<SocketTransportFactory>();
-        services.TryAddSingleton(provider =>
-            new TunnelConnectionListenerFactory(provider.GetRequiredService<ITunnelIdProvider>(), provider.GetRequiredService<ITunnelClientManager>(), provider.GetRequiredService<IOptions<TunnelListenerOptions>>()));
+        services.TryAddSingleton<TunnelConnectionListenerFactory>();
         services.AddSingleton<IConnectionListenerFactory, TunnelCompositeTransportFactory>();
         return services;
     }

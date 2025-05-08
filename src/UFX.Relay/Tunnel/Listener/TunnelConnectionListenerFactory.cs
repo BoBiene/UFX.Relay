@@ -5,12 +5,12 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel.Listener;
 
-public class TunnelConnectionListenerFactory(ITunnelIdProvider tunnelIdProvider, ITunnelClientManager tunnelManager, IOptions<TunnelListenerOptions> options) : IConnectionListenerFactory
+public class TunnelConnectionListenerFactory(ITunnelIdProvider tunnelIdProvider, ITunnelClientManager tunnelManager, IOptions<TunnelListenerOptions> options, ILoggerFactory loggerFactory) : IConnectionListenerFactory
 {
     public async ValueTask<IConnectionListener> BindAsync(EndPoint endpoint, CancellationToken cancellationToken = default)
     {
         if (endpoint is not TunnelEndpoint tunnelEndpoint) throw new NotSupportedException($"{nameof(TunnelEndpoint)} is required");
-        var listener = new TunnelConnectionListener(tunnelEndpoint, tunnelIdProvider, tunnelManager, options);
+        var listener = new TunnelConnectionListener(tunnelEndpoint, tunnelIdProvider, tunnelManager, options, loggerFactory.CreateLogger<TunnelConnectionListener>());
         await listener.BindAsync();
         return listener;
     }
