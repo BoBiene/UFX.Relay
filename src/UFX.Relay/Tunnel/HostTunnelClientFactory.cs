@@ -11,4 +11,9 @@ public sealed class HostTunnelClientFactory : ITunnelClientFactory
     {
         throw new NotImplementedException();
     }
+
+    public HttpClient CreateHttpClient()
+    {
+        return new HttpClient();
+    }
 }

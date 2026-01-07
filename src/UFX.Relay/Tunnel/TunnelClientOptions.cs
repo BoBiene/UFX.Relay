@@ -8,5 +8,6 @@ public sealed class TunnelClientOptions
     public string? TunnelHost { get; set; }
     public string TunnelPathTemplate { get; set; } = "/tunnel/{0}";
     public bool IsEnabled { get; set; } = true;
+    public Dictionary<string, string> RequestHeaders { get; set; } = new();
     public Action<ClientWebSocketOptions>? WebSocketOptions { get; set; }
 }
