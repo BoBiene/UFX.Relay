@@ -152,6 +152,7 @@ namespace UFX.Relay.Tunnel
 
                     if (connected)
                     {
+                        LastErrorResponseBody = string.Empty;
                         LastConnectErrorMessage = string.Empty;
                         LastConnectStatusCode = (int?)websocket.HttpStatusCode;
                         _logger.LogInformation("Connected to {Uri}", uri);
@@ -217,12 +218,14 @@ namespace UFX.Relay.Tunnel
                 if (!response.IsSuccessStatusCode)
                 {
                     LastErrorResponseBody = await response.Content.ReadAsStringAsync();
+
                     _logger.LogDebug("Error response body from {HttpUrl}: {Body}", httpUrl, LastErrorResponseBody);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "Failed to fetch error response body from {WsUrl}: {Message}", wsUrl, ex.Message);
+                LastConnectErrorMessage = ex.Message;
             }
 
         }
