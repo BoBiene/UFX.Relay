@@ -18,6 +18,8 @@ namespace UFX.Relay.Tunnel
         private readonly ITunnelClientFactory _tunnelClientFactory;
         private readonly IOptions<TunnelListenerOptions> _listenerOptions;
         public string LastConnectErrorMessage { get; private set; } = string.Empty;
+        public int? LastConnectStatusCode { get; private set; } = null;
+        public string LastErrorResponseBody { get; private set; } = string.Empty;
         private TunnelConnectionState _state;
         private TunnelClient? _client;
         private bool _optionsChanged = false;
@@ -119,12 +121,14 @@ namespace UFX.Relay.Tunnel
                     {
                         websocket.Dispose();
                         LastConnectErrorMessage = "Connection timed out";
+                        LastConnectStatusCode = 0;
                         UpdateState(TunnelConnectionState.Disconnected);
                     }
                     catch (WebSocketException ex) when (ex.InnerException is HttpRequestException httpRequestException)
                     {
                         LastConnectErrorMessage = httpRequestException.Message;
-
+                        LastConnectStatusCode = (int?)websocket.HttpStatusCode;
+                        await TryFetchErrorResponseBodyAsync(uri.AbsoluteUri);
                         if (!_stepdownErrorLogging)
                         {
                             _logger.LogInformation(ex, "Failed to connect to {Uri}, {Message}: {HttpRequestErrorMessage} (Code: {StatusCode})", uri, ex.Message, httpRequestException.Message, httpRequestException.StatusCode);
@@ -140,13 +144,17 @@ namespace UFX.Relay.Tunnel
                     catch (WebSocketException ex)
                     {
                         LastConnectErrorMessage = ex.Message;
+                        LastConnectStatusCode = (int?)websocket.HttpStatusCode;
+                        await TryFetchErrorResponseBodyAsync(uri.AbsoluteUri);
                         _logger.LogDebug(ex, "Websocket Error: {Uri}, {Message}", uri, ex.Message);
                         UpdateState(TunnelConnectionState.Error);
                     }
 
                     if (connected)
                     {
+                        LastErrorResponseBody = string.Empty;
                         LastConnectErrorMessage = string.Empty;
+                        LastConnectStatusCode = (int?)websocket.HttpStatusCode;
                         _logger.LogInformation("Connected to {Uri}", uri);
                         var stream = await MultiplexingStream.CreateAsync(websocket.AsStream(), new MultiplexingStream.Options
                         {
@@ -198,6 +206,28 @@ namespace UFX.Relay.Tunnel
                 _state = newState;
                 ConnectionStateChanged?.Invoke(this, newState);
             }
+        }
+
+        private async Task TryFetchErrorResponseBodyAsync(string wsUrl)
+        {
+            try
+            {
+                var httpUrl = wsUrl.Replace("ws://", "http://").Replace("wss://", "https://");
+                using var httpClient = _tunnelClientFactory.CreateHttpClient();
+                var response = await httpClient.GetAsync(httpUrl);
+                if (!response.IsSuccessStatusCode)
+                {
+                    LastErrorResponseBody = await response.Content.ReadAsStringAsync();
+
+                    _logger.LogDebug("Error response body from {HttpUrl}: {Body}", httpUrl, LastErrorResponseBody);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to fetch error response body from {WsUrl}: {Message}", wsUrl, ex.Message);
+                LastConnectErrorMessage = ex.Message;
+            }
+
         }
     }
 }

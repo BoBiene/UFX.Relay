@@ -14,6 +14,8 @@ namespace UFX.Relay.Abstractions
     {
         public bool IsEnabled { get; }
         public string LastConnectErrorMessage { get; }
+        public string LastErrorResponseBody { get; }
+        public int? LastConnectStatusCode { get; }
         public TunnelClient? Tunnel { get; }
         TunnelConnectionState ConnectionState { get; }
         event EventHandler<TunnelConnectionState>? ConnectionStateChanged;

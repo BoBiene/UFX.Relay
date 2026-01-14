@@ -6,4 +6,5 @@ public interface ITunnelClientFactory
 {
     ValueTask<ClientWebSocket?> CreateAsync();
     ValueTask<Uri> GetUriAsync();
+    HttpClient CreateHttpClient();
 }
