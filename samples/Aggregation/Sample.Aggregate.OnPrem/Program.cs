@@ -23,9 +23,10 @@ builder.Services.AddAggregatedTunnelForwarder(options =>
     options.DefaultTunnelId = "123"; 
 });
 builder.Services.AddTunnelClient(options =>
-{
-    options.TunnelHost = "wss://localhost:7400";
-    options.TunnelId = "on-prem-aggregator";
+    options with 
+    {
+       TunnelHost = "wss://localhost:7400",
+       TunnelId = "on-prem-aggregator",
 });
 var app = builder.Build();
 app.MapTunnelForwarder();

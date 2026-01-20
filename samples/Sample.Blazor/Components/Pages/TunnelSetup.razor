@@ -70,12 +70,12 @@
     private void Apply()
     {
         tunnelClientOptionsStore.Update(current =>
-        {
-            current.TunnelHost = tunnelHost;
-            current.TunnelId = tunnelId;
-            current.IsEnabled = isEnabled;
-            return current;
-        });
+            current with
+            {
+                TunnelHost = tunnelHost,
+                TunnelId = tunnelId,
+                IsEnabled = isEnabled
+            });
     }
 
     public void Dispose()

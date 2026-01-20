@@ -20,10 +20,11 @@ Console.WriteLine(@"
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
 builder.Services.AddTunnelClient(options =>
-{
-    options.TunnelHost = "wss://localhost:7400";
-    options.TunnelId = "123";
-});
+    options with
+    {
+        TunnelHost = "wss://localhost:7400",
+        TunnelId = "123"
+    });
 var app = builder.Build();
 
 app.MapGet("/", () => builder.Environment.ApplicationName);

@@ -34,9 +34,10 @@ The listener received requests over the tunnel from the forwarder and injects th
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.AddTunnelListener(options =>
-{
-    options.DefaultTunnelId = "123";
-});
+    options with
+    {
+        DefaultTunnelId = "123"
+    });
 ```
 
 ### Tunnel
@@ -52,10 +53,11 @@ The client requires the TunnelHost and TunnelId to be specified in order to conn
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddTunnelClient(options =>
-{
-    options.TunnelHost = "wss://localhost:7200";
-    options.TunnelId = "123";
-});
+    options with
+    {
+        TunnelHost = "wss://localhost:7400",
+        TunnelId = "123"
+    });
 ```
 
 #### Tunnel Host
@@ -89,8 +91,18 @@ A request to https://localhost:7200/server is handled by the server and a reques
 The minimal configuration for the client is as follows:
 
 ```csharp
-builder.WebHost.AddTunnelListener(options => { options.DefaultTunnelId = "123"; });
-builder.Services.AddTunnelClient(options => { options.TunnelHost = "wss://localhost:7200"; });
+builder.WebHost.AddTunnelListener(options =>
+    options with
+    {
+        DefaultTunnelId = "123"
+    });
+
+builder.Services.AddTunnelClient(options =>
+    options with
+    {
+        TunnelHost = "wss://localhost:7200"
+    });
+
 ```
 This will create a Kestrel Listener that will inject requests (from the forwarder) into the client ASPNet Core pipeline received over the WebSocket connection to the server (i.e. wss://localhost:7200) 
 
@@ -99,9 +111,10 @@ If you require the default listener to be enabled you can set the includeDefault
 
 ```csharp
 builder.WebHost.AddTunnelListener(options =>
-{
-    options.DefaultTunnelId = "123";
-}, includeDefaultUrls: true);
+    options with
+    {
+        DefaultTunnelId = "123"
+    }, includeDefaultUrls: true);
 ```
 The sample uses a simple association of agents using a static TunnelId '123'
 
@@ -299,12 +312,34 @@ The client WebSocket can be configured for authentication, for example setting a
 ```csharp
 builder.Services.AddTunnelClient(options =>
 {
-    options.WebSocketOptions = socketOptions =>
+    Action<ClientWebSocketOptions> socketOptions = wsOptions =>
     {
-        socketOptions.SetRequestHeader("Authorization", "ApiKey 123");
+        wsOptions.SetRequestHeader("Authorization", "ApiKey 123");
     };
-    options.TunnelHost = "wss://localhost:7200";
-    options.TunnelId = "123";
+    return options with
+    {
+        WebSocketOptions = socketOptions,
+        TunnelHost = "wss://localhost:7200",
+        TunnelId = "123"
+    };
+});
+```
+
+Or if you also want to get the response body from the faulty WebSocket connection with LastErrorResponseBody, you must specify the authorization header as follows:
+
+```csharp
+builder.Services.AddTunnelClient(options =>
+{
+    Dictionary<string, string> requestHeaders = new()
+    {
+        { "Authorization", "ApiKey 123" }
+    };
+    return options with
+    {
+        RequestHeaders = requestHeaders,
+        TunnelHost = "wss://localhost:7200",
+        TunnelId = "123"
+    };
 });
 ```
 
@@ -327,7 +362,11 @@ However, it is possible to have the forwarder on-prem and the listener in the cl
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.AddTunnelListener(options =>{ options.DefaultTunnelId = "123"; });
+builder.WebHost.AddTunnelListener(options =>
+    options with
+    {
+        DefaultTunnelId = "123"
+    });
 var app = builder.Build();
 app.MapTunnelHost();
 app.Run();
@@ -339,10 +378,11 @@ app.Run();
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddTunnelForwarder(options => { options.DefaultTunnelId = "123"; });
 builder.Services.AddTunnelClient(options =>
-{
-    options.TunnelHost = "wss://localhost:7100";
-    options.TunnelId = "123";
-});    
+    options with
+    {
+        TunnelHost = "wss://localhost:7100",
+        TunnelId = "123"
+    });
 var app = builder.Build();
 app.MapTunnelForwarder();
 app.Run();
