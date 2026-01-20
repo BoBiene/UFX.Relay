@@ -1,4 +1,5 @@
 ﻿
+using System.Xml.Linq;
 using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel
@@ -6,6 +7,7 @@ namespace UFX.Relay.Tunnel
     public class TunnelClientOptionsStore(TunnelClientOptions options) : ITunnelClientOptionsStore
     {
         private TunnelClientOptions _options = options;
+        private readonly object _lock = new();
 
         public TunnelClientOptions Current
         {
@@ -16,17 +18,21 @@ namespace UFX.Relay.Tunnel
 
         public void Update(TunnelClientOptionsUpdateHandler updateAction)
         {
-            var oldOptions = _options;
-            var newOptions = updateAction(_options);
-            if (newOptions == null)
+            TunnelClientOptions oldOptions;
+            TunnelClientOptions newOptions;
+
+            lock (_lock)
             {
-                throw new ArgumentNullException(nameof(newOptions), "The update action must return a non-null TunnelClientOptions instance.");
-            }
-            else
-            {
+                oldOptions = _options;
+                newOptions = updateAction(_options);
+                if (newOptions == null)
+                {
+                    throw new ArgumentNullException(nameof(newOptions), "The update action must return a non-null TunnelClientOptions instance.");
+                }
                 _options = newOptions;
-                OptionsChanged?.Invoke(this, (oldOptions, newOptions));
             }
+
+            OptionsChanged?.Invoke(this, (oldOptions, newOptions));
         }
     }
 }

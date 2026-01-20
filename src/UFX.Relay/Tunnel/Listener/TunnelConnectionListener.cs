@@ -10,7 +10,7 @@ public sealed class TunnelConnectionListener : IConnectionListener
     private readonly TunnelEndpoint _endpoint;
     private readonly ITunnelIdProvider _tunnelIdProvider;
     private readonly ITunnelClientManager _tunnelManager;
-    private readonly IOptions<TunnelListenerOptions> _options;
+    private readonly ITunnelListenerOptionsStore _options;
     private readonly ILogger<TunnelConnectionListener> _logger;
     private CancellationTokenSource _unbindTokenSource = new();
     public EndPoint EndPoint => _endpoint;
@@ -19,7 +19,7 @@ public sealed class TunnelConnectionListener : IConnectionListener
         TunnelEndpoint endpoint,
         ITunnelIdProvider tunnelIdProvider,
         ITunnelClientManager tunnelManager,
-        IOptions<TunnelListenerOptions> options,
+        ITunnelListenerOptionsStore options,
         ILogger<TunnelConnectionListener> logger)
     {
         _endpoint = endpoint;
@@ -43,12 +43,12 @@ public sealed class TunnelConnectionListener : IConnectionListener
             if (!_tunnelManager.IsEnabled)
             {
                 //tunnel is disabled, wait for it to be enabled
-                await Task.Delay(_options.Value.DelayWhenDisabled, linkedToken);
+                await Task.Delay(_options.Current.DelayWhenDisabled, linkedToken);
             }
             else if (_tunnelManager.ConnectionState != TunnelConnectionState.Connected)
             {
                 //tunnel is disconnected, wait for it to be connected
-                await Task.Delay(_options.Value.DelayWhenDisconnected, linkedToken);
+                await Task.Delay(_options.Current.DelayWhenDisconnected, linkedToken);
             }
             else
             {
@@ -56,7 +56,7 @@ public sealed class TunnelConnectionListener : IConnectionListener
                 if (tunnel == null || tunnel.Completion.Status == TaskStatus.RanToCompletion)
                 {
                     _logger.LogWarning("No tunnel available ({Tunnel}, {TunnelStatus})", tunnel, tunnel?.Completion.Status);
-                    await Task.Delay(_options.Value.DelayWhenDisconnected, linkedToken);
+                    await Task.Delay(_options.Current.DelayWhenDisconnected, linkedToken);
                 }
                 else
                 {

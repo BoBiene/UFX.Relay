@@ -16,7 +16,7 @@ namespace UFX.Relay.Tunnel
         private readonly ILogger<TunnelClientManager> _logger;
         private readonly ITunnelClientOptionsStore _optionsStore;
         private readonly ITunnelClientFactory _tunnelClientFactory;
-        private readonly IOptions<TunnelListenerOptions> _listenerOptions;
+        private readonly ITunnelListenerOptionsStore _listenerOptions;
         public string LastConnectErrorMessage { get; private set; } = string.Empty;
         public int? LastConnectStatusCode { get; private set; } = null;
         public string LastErrorResponseBody { get; private set; } = string.Empty;
@@ -30,7 +30,7 @@ namespace UFX.Relay.Tunnel
 
         public TunnelClient? Tunnel => _client;
 
-        public TunnelClientManager(ITunnelClientOptionsStore optionsStore, IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientFactory tunnelClientFactory, ILogger<TunnelClientManager> logger)
+        public TunnelClientManager(ITunnelClientOptionsStore optionsStore, ITunnelListenerOptionsStore listenerOptions, ITunnelClientFactory tunnelClientFactory, ILogger<TunnelClientManager> logger)
         {
             _optionsStore = optionsStore;
             _listenerOptions = listenerOptions;
@@ -38,7 +38,7 @@ namespace UFX.Relay.Tunnel
             _logger = logger;
 
             _state = TunnelConnectionState.Disconnected;
-            _reconnectTimer = new Timer(ReconnectLoop, null, TimeSpan.Zero, listenerOptions.Value.ReconnectInterval);
+            _reconnectTimer = new Timer(ReconnectLoop, null, TimeSpan.Zero, listenerOptions.Current.ReconnectInterval);
 
             _optionsStore.OptionsChanged += (_, _) =>
             {
@@ -50,7 +50,7 @@ namespace UFX.Relay.Tunnel
 
         private void TriggerReconnect()
         {
-            _reconnectTimer.Change(TimeSpan.Zero, _listenerOptions.Value.ReconnectInterval);
+            _reconnectTimer.Change(TimeSpan.Zero, _listenerOptions.Current.ReconnectInterval);
         }
 
         public TunnelConnectionState ConnectionState => _state;
