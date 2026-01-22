@@ -34,10 +34,29 @@ The listener received requests over the tunnel from the forwarder and injects th
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.AddTunnelListener(options =>
-    options with
-    {
-        DefaultTunnelId = "123"
-    });
+{
+    options.DefaultTunnelId = "123";
+});
+```
+#### Reconnect backoff (optional)
+If you expect repeated connection failures (e.g., temporary network issues or misconfiguration), you can enable exponential backoff for reconnect attempts. 
+When enabled, the delay between reconnect attempts increases progressively after each failed attempt, up to a configurable maximum. 
+Once a connection succeeds, the interval resets to the base `ReconnectInterval`.
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.AddTunnelListener(options =>
+{
+    options.DefaultTunnelId = "123";
+
+    // Enable exponential backoff for reconnect attempts
+    options.EnableReconnectBackoff = true;
+
+    // Cap the maximum backoff delay (default: 2 minutes)
+    options.MaxReconnectInterval = TimeSpan.FromMinutes(5);
+});
+
 ```
 
 ### Tunnel
@@ -91,11 +110,7 @@ A request to https://localhost:7200/server is handled by the server and a reques
 The minimal configuration for the client is as follows:
 
 ```csharp
-builder.WebHost.AddTunnelListener(options =>
-    options with
-    {
-        DefaultTunnelId = "123"
-    });
+builder.WebHost.AddTunnelListener(options => { options.DefaultTunnelId = "123"; });
 
 builder.Services.AddTunnelClient(options =>
     options with
@@ -111,10 +126,9 @@ If you require the default listener to be enabled you can set the includeDefault
 
 ```csharp
 builder.WebHost.AddTunnelListener(options =>
-    options with
-    {
-        DefaultTunnelId = "123"
-    }, includeDefaultUrls: true);
+{
+    options.DefaultTunnelId = "123";
+}, includeDefaultUrls: true);
 ```
 The sample uses a simple association of agents using a static TunnelId '123'
 
@@ -362,11 +376,7 @@ However, it is possible to have the forwarder on-prem and the listener in the cl
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.AddTunnelListener(options =>
-    options with
-    {
-        DefaultTunnelId = "123"
-    });
+builder.WebHost.AddTunnelListener(options =>{ options.DefaultTunnelId = "123"; });
 var app = builder.Build();
 app.MapTunnelHost();
 app.Run();

@@ -16,11 +16,7 @@ Console.WriteLine(@"
 ");
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.AddTunnelListener(options =>
-    options with
-    {
-        DefaultTunnelId = "123"
-    });
+builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
 builder.Services.AddTunnelClient(options =>
     options with
     {

@@ -36,7 +36,7 @@ namespace UFX.Relay.Tunnel
                         await Task.Delay(delay, token);
                         _errorCount = await _func(token) switch
                         {
-                            true => _errorCount + 1,
+                            true => Math.Min(_errorCount + 1, 20),
                             false => 0
                         };
 
@@ -52,7 +52,7 @@ namespace UFX.Relay.Tunnel
 
         private TimeSpan ComputeBackoff()
         {
-            var factor = Math.Pow(2, Math.Min(_errorCount, 20));
+            var factor = Math.Pow(2, _errorCount);
             var next = TimeSpan.FromMilliseconds(_initialDelay.TotalMilliseconds * factor);
 
             if (next > _maxDelay)
