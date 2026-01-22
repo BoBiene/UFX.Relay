@@ -38,6 +38,7 @@ builder.WebHost.AddTunnelListener(options =>
     options.DefaultTunnelId = "123";
 });
 ```
+
 #### Reconnect backoff (optional)
 If you expect repeated connection failures (e.g., temporary network issues or misconfiguration), you can enable exponential backoff for reconnect attempts. 
 When enabled, the delay between reconnect attempts increases progressively after each failed attempt, up to a configurable maximum. 
