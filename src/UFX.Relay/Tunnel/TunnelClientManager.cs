@@ -11,12 +11,12 @@ using UFX.Relay.Tunnel.Listener;
 namespace UFX.Relay.Tunnel
 {
 
-    public class TunnelClientManager : ITunnelClientManager
+    public class TunnelClientManager : ITunnelClientManager, IDisposable
     {
         private readonly ILogger<TunnelClientManager> _logger;
         private readonly ITunnelClientOptionsStore _optionsStore;
         private readonly ITunnelClientFactory _tunnelClientFactory;
-        private readonly ITunnelListenerOptionsStore _listenerOptions;
+        private readonly IOptions<TunnelListenerOptions> _listenerOptions;
         public string LastConnectErrorMessage { get; private set; } = string.Empty;
         public int? LastConnectStatusCode { get; private set; } = null;
         public string LastErrorResponseBody { get; private set; } = string.Empty;
@@ -24,13 +24,12 @@ namespace UFX.Relay.Tunnel
         private TunnelClient? _client;
         private bool _optionsChanged = false;
         private bool _stepdownErrorLogging = false;
-        private readonly Timer _reconnectTimer;
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly WorkerWithBackoff _reconnectWorker;
         public event EventHandler<TunnelConnectionState>? ConnectionStateChanged;
 
         public TunnelClient? Tunnel => _client;
 
-        public TunnelClientManager(ITunnelClientOptionsStore optionsStore, ITunnelListenerOptionsStore listenerOptions, ITunnelClientFactory tunnelClientFactory, ILogger<TunnelClientManager> logger)
+        public TunnelClientManager(ITunnelClientOptionsStore optionsStore, IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientFactory tunnelClientFactory, ILogger<TunnelClientManager> logger)
         {
             _optionsStore = optionsStore;
             _listenerOptions = listenerOptions;
@@ -38,7 +37,7 @@ namespace UFX.Relay.Tunnel
             _logger = logger;
 
             _state = TunnelConnectionState.Disconnected;
-            _reconnectTimer = new Timer(ReconnectLoop, null, TimeSpan.Zero, listenerOptions.Current.ReconnectInterval);
+            _reconnectWorker = new(listenerOptions.Value.ReconnectInterval, listenerOptions.Value.MaxReconnectInterval, ReconnectLoopAsync);
 
             _optionsStore.OptionsChanged += (_, _) =>
             {
@@ -48,23 +47,29 @@ namespace UFX.Relay.Tunnel
             };
         }
 
+        public void Dispose()
+        {
+            _reconnectWorker.Dispose();
+        }
+
         private void TriggerReconnect()
         {
-            _reconnectTimer.Change(TimeSpan.Zero, _listenerOptions.Current.ReconnectInterval);
+            _reconnectWorker.Reset();
         }
 
         public TunnelConnectionState ConnectionState => _state;
 
         public bool IsEnabled => _optionsStore.Current.IsEnabled;
 
-        private async void ReconnectLoop(object? state)
+        private async Task<bool> ReconnectLoopAsync(CancellationToken token)
         {
+            bool doBackoff = _listenerOptions.Value.EnableReconnectBackoff;
             if (_optionsChanged)
             {
                 _optionsChanged = false;
                 if (_optionsStore.Current.IsEnabled)
                 {
-                    await ConnectInternalAsync(_cancellationTokenSource.Token);
+                    await ConnectInternalAsync(token);
                 }
                 else
                 {
@@ -84,11 +89,14 @@ namespace UFX.Relay.Tunnel
             else if (_state == TunnelConnectionState.Connected || _state == TunnelConnectionState.Connecting)
             {
                 // we are already connected or connecting, do nothing
+                doBackoff = false;
             }
             else
             {
-                await ConnectInternalAsync(_cancellationTokenSource.Token);
+                await ConnectInternalAsync(token);
             }
+
+            return doBackoff;
         }
 
         private async Task ConnectInternalAsync(CancellationToken cancellationToken)

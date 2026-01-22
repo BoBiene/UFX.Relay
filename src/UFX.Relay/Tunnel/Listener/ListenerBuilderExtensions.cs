@@ -12,7 +12,7 @@ public static class ListenerBuilderExtensions
 {
     private static bool tunnelListenerAdded;
     private static ILogger logger = LoggerFactory.Create(logBuilder => logBuilder.AddConsole()).CreateLogger(typeof(ListenerBuilderExtensions));
-    public static IWebHostBuilder AddTunnelListener(this IWebHostBuilder builder, TunnelListenerOptionsUpdateHandler? tunnelOptions = null, bool includeDefaultUrls = false)
+    public static IWebHostBuilder AddTunnelListener(this IWebHostBuilder builder, Action<TunnelListenerOptions>? tunnelOptions = null, bool includeDefaultUrls = false)
     {
         if (tunnelListenerAdded)
         {
@@ -33,13 +33,10 @@ public static class ListenerBuilderExtensions
         return builder;
     }
 
-    private static IServiceCollection AddTunnelListener(this IServiceCollection services, TunnelListenerOptionsUpdateHandler? tunnelOptions = null)
+    private static IServiceCollection AddTunnelListener(this IServiceCollection services, Action<TunnelListenerOptions>? tunnelOptions = null)
     {
-        services.TryAddSingleton<ITunnelListenerOptionsStore>(provider =>
-        {
-            var options = tunnelOptions is null ? new() : tunnelOptions(new());
-            return new TunnelListenerOptionsStore(options);
-        });
+        if (tunnelOptions != null)
+            services.Configure(tunnelOptions);
 
         services.TryAddSingleton<ITunnelIdProvider, ListenerTunnelIdProvider>();
         services.TryAddSingleton<ITunnelClientManager, TunnelClientManager>();

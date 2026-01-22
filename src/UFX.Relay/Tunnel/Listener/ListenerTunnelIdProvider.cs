@@ -3,12 +3,12 @@ using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel.Listener;
 
-public class ListenerTunnelIdProvider(ITunnelListenerOptionsStore listenerOptions, ITunnelClientOptionsStore clientOptionsStore) : ITunnelIdProvider
+public class ListenerTunnelIdProvider(IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientOptionsStore clientOptionsStore) : ITunnelIdProvider
 {
     public ValueTask<string?> GetTunnelIdAsync()
     {
         return new ValueTask<string?>(
-            listenerOptions.Current.DefaultTunnelId
+            listenerOptions.Value.DefaultTunnelId
             ?? clientOptionsStore.Current.TunnelId
             ?? (clientOptionsStore.Current.TunnelHost != null ? new Uri(clientOptionsStore.Current.TunnelHost).GetTunnelIdFromHost() : null));
     }
