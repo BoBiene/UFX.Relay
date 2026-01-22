@@ -222,20 +222,28 @@ namespace UFX.Relay.Tunnel
             {
                 var httpUrl = wsUrl.Replace("ws://", "http://").Replace("wss://", "https://");
                 using var httpClient = _tunnelClientFactory.CreateHttpClient();
-                var response = await httpClient.GetAsync(httpUrl);
+                using var response = await httpClient.GetAsync(httpUrl, HttpCompletionOption.ResponseHeadersRead);
                 if (!response.IsSuccessStatusCode)
                 {
-                    LastErrorResponseBody = await response.Content.ReadAsStringAsync();
-
-                    _logger.LogDebug("Error response body from {HttpUrl}: {Body}", httpUrl, LastErrorResponseBody);
+                    try
+                    {
+                        LastErrorResponseBody = await response.Content.ReadAsStringAsync();
+                        
+                        if (!string.IsNullOrWhiteSpace(LastErrorResponseBody))
+                        {
+                            _logger.LogDebug("Error response body from {HttpUrl}: {Body}", httpUrl, LastErrorResponseBody);
+                        }
+                    }
+                    catch (HttpRequestException)
+                    {
+                        // WebSocket endpoint or connection terminated - LastErrorResponseBody remains empty
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Failed to fetch error response body from {WsUrl}: {Message}", wsUrl, ex.Message);
-                LastConnectErrorMessage = ex.Message;
+                _logger.LogDebug(ex, "Failed to fetch error response from {WsUrl}: {Message}", wsUrl, ex.Message);
             }
-
         }
     }
 }
