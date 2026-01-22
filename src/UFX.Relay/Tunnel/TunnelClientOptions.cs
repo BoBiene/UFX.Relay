@@ -1,13 +1,14 @@
+using System.Collections.ObjectModel;
 using System.Net.WebSockets;
 
 namespace UFX.Relay.Tunnel;
 
-public sealed class TunnelClientOptions
+public sealed record TunnelClientOptions
 {
-    public string? TunnelId { get; set; }
-    public string? TunnelHost { get; set; }
-    public string TunnelPathTemplate { get; set; } = "/tunnel/{0}";
-    public bool IsEnabled { get; set; } = true;
-    public Dictionary<string, string> RequestHeaders { get; set; } = new();
-    public Action<ClientWebSocketOptions>? WebSocketOptions { get; set; }
+    public string? TunnelId { get; init; }
+    public string? TunnelHost { get; init; }
+    public string TunnelPathTemplate { get; init; } = "/tunnel/{0}";
+    public bool IsEnabled { get; init; } = true;
+    public IReadOnlyDictionary<string, string> RequestHeaders { get; init; } = ReadOnlyDictionary<string, string>.Empty;
+    public Action<ClientWebSocketOptions>? WebSocketOptions { get; init; }
 }

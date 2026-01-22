@@ -31,11 +31,12 @@ namespace Sample.Blazor
 
             builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
             builder.Services.AddTunnelClient(options =>
-            {
-                options.TunnelHost = "wss://localhost:7200";
-                options.TunnelId = "BlazorSample";
-                options.IsEnabled = false;
-            });
+                options with
+                {
+                    TunnelHost = "wss://localhost:7200",
+                    TunnelId = "BlazorSample",
+                    IsEnabled = false
+                });
 
             var app = builder.Build();
 

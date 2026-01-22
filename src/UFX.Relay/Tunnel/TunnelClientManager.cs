@@ -11,7 +11,7 @@ using UFX.Relay.Tunnel.Listener;
 namespace UFX.Relay.Tunnel
 {
 
-    public class TunnelClientManager : ITunnelClientManager
+    public class TunnelClientManager : ITunnelClientManager, IDisposable
     {
         private readonly ILogger<TunnelClientManager> _logger;
         private readonly ITunnelClientOptionsStore _optionsStore;
@@ -24,8 +24,7 @@ namespace UFX.Relay.Tunnel
         private TunnelClient? _client;
         private bool _optionsChanged = false;
         private bool _stepdownErrorLogging = false;
-        private readonly Timer _reconnectTimer;
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly WorkerWithBackoff _reconnectWorker;
         public event EventHandler<TunnelConnectionState>? ConnectionStateChanged;
 
         public TunnelClient? Tunnel => _client;
@@ -38,7 +37,7 @@ namespace UFX.Relay.Tunnel
             _logger = logger;
 
             _state = TunnelConnectionState.Disconnected;
-            _reconnectTimer = new Timer(ReconnectLoop, null, TimeSpan.Zero, listenerOptions.Value.ReconnectInterval);
+            _reconnectWorker = new(listenerOptions.Value.ReconnectInterval, listenerOptions.Value.MaxReconnectInterval, ReconnectLoopAsync);
 
             _optionsStore.OptionsChanged += (_, _) =>
             {
@@ -48,23 +47,29 @@ namespace UFX.Relay.Tunnel
             };
         }
 
+        public void Dispose()
+        {
+            _reconnectWorker.Dispose();
+        }
+
         private void TriggerReconnect()
         {
-            _reconnectTimer.Change(TimeSpan.Zero, _listenerOptions.Value.ReconnectInterval);
+            _reconnectWorker.Reset();
         }
 
         public TunnelConnectionState ConnectionState => _state;
 
         public bool IsEnabled => _optionsStore.Current.IsEnabled;
 
-        private async void ReconnectLoop(object? state)
+        private async Task<bool> ReconnectLoopAsync(CancellationToken token)
         {
+            bool doBackoff = _listenerOptions.Value.EnableReconnectBackoff;
             if (_optionsChanged)
             {
                 _optionsChanged = false;
                 if (_optionsStore.Current.IsEnabled)
                 {
-                    await ConnectInternalAsync(_cancellationTokenSource.Token);
+                    await ConnectInternalAsync(token);
                 }
                 else
                 {
@@ -84,11 +89,14 @@ namespace UFX.Relay.Tunnel
             else if (_state == TunnelConnectionState.Connected || _state == TunnelConnectionState.Connecting)
             {
                 // we are already connected or connecting, do nothing
+                doBackoff = false;
             }
             else
             {
-                await ConnectInternalAsync(_cancellationTokenSource.Token);
+                await ConnectInternalAsync(token);
             }
+
+            return doBackoff;
         }
 
         private async Task ConnectInternalAsync(CancellationToken cancellationToken)
@@ -214,20 +222,28 @@ namespace UFX.Relay.Tunnel
             {
                 var httpUrl = wsUrl.Replace("ws://", "http://").Replace("wss://", "https://");
                 using var httpClient = _tunnelClientFactory.CreateHttpClient();
-                var response = await httpClient.GetAsync(httpUrl);
+                using var response = await httpClient.GetAsync(httpUrl, HttpCompletionOption.ResponseHeadersRead);
                 if (!response.IsSuccessStatusCode)
                 {
-                    LastErrorResponseBody = await response.Content.ReadAsStringAsync();
-
-                    _logger.LogDebug("Error response body from {HttpUrl}: {Body}", httpUrl, LastErrorResponseBody);
+                    try
+                    {
+                        LastErrorResponseBody = await response.Content.ReadAsStringAsync();
+                        
+                        if (!string.IsNullOrWhiteSpace(LastErrorResponseBody))
+                        {
+                            _logger.LogDebug("Error response body from {HttpUrl}: {Body}", httpUrl, LastErrorResponseBody);
+                        }
+                    }
+                    catch (HttpRequestException)
+                    {
+                        // WebSocket endpoint or connection terminated - LastErrorResponseBody remains empty
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Failed to fetch error response body from {WsUrl}: {Message}", wsUrl, ex.Message);
-                LastConnectErrorMessage = ex.Message;
+                _logger.LogDebug(ex, "Failed to fetch error response from {WsUrl}: {Message}", wsUrl, ex.Message);
             }
-
         }
     }
 }

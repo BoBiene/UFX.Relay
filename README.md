@@ -39,6 +39,27 @@ builder.WebHost.AddTunnelListener(options =>
 });
 ```
 
+#### Reconnect backoff (optional)
+If you expect repeated connection failures (e.g., temporary network issues or misconfiguration), you can enable exponential backoff for reconnect attempts. 
+When enabled, the delay between reconnect attempts increases progressively after each failed attempt, up to a configurable maximum. 
+Once a connection succeeds, the interval resets to the base `ReconnectInterval`.
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.AddTunnelListener(options =>
+{
+    options.DefaultTunnelId = "123";
+
+    // Enable exponential backoff for reconnect attempts
+    options.EnableReconnectBackoff = true;
+
+    // Cap the maximum backoff delay (default: 2 minutes)
+    options.MaxReconnectInterval = TimeSpan.FromMinutes(5);
+});
+
+```
+
 ### Tunnel
 The Tunnel is a logical layer on top of a WebSocket connection that allows for multiple requests to be multiplexed over a single connection.
 The tunnel has both a Client and Host end, the Forwarder and Listener can use either the Tunnel Client or Tunnel Host. Typically, the forwarder would be used with the Tunnel Host and the listener with the Tunnel Client for a ngrok replacement scenario.
@@ -52,10 +73,11 @@ The client requires the TunnelHost and TunnelId to be specified in order to conn
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddTunnelClient(options =>
-{
-    options.TunnelHost = "wss://localhost:7200";
-    options.TunnelId = "123";
-});
+    options with
+    {
+        TunnelHost = "wss://localhost:7400",
+        TunnelId = "123"
+    });
 ```
 
 #### Tunnel Host
@@ -90,7 +112,13 @@ The minimal configuration for the client is as follows:
 
 ```csharp
 builder.WebHost.AddTunnelListener(options => { options.DefaultTunnelId = "123"; });
-builder.Services.AddTunnelClient(options => { options.TunnelHost = "wss://localhost:7200"; });
+
+builder.Services.AddTunnelClient(options =>
+    options with
+    {
+        TunnelHost = "wss://localhost:7200"
+    });
+
 ```
 This will create a Kestrel Listener that will inject requests (from the forwarder) into the client ASPNet Core pipeline received over the WebSocket connection to the server (i.e. wss://localhost:7200) 
 
@@ -299,12 +327,34 @@ The client WebSocket can be configured for authentication, for example setting a
 ```csharp
 builder.Services.AddTunnelClient(options =>
 {
-    options.WebSocketOptions = socketOptions =>
+    Action<ClientWebSocketOptions> socketOptions = wsOptions =>
     {
-        socketOptions.SetRequestHeader("Authorization", "ApiKey 123");
+        wsOptions.SetRequestHeader("Authorization", "ApiKey 123");
     };
-    options.TunnelHost = "wss://localhost:7200";
-    options.TunnelId = "123";
+    return options with
+    {
+        WebSocketOptions = socketOptions,
+        TunnelHost = "wss://localhost:7200",
+        TunnelId = "123"
+    };
+});
+```
+
+Or if you also want to get the response body from the faulty WebSocket connection with LastErrorResponseBody, you must specify the authorization header as follows:
+
+```csharp
+builder.Services.AddTunnelClient(options =>
+{
+    Dictionary<string, string> requestHeaders = new()
+    {
+        { "Authorization", "ApiKey 123" }
+    };
+    return options with
+    {
+        RequestHeaders = requestHeaders,
+        TunnelHost = "wss://localhost:7200",
+        TunnelId = "123"
+    };
 });
 ```
 
@@ -339,10 +389,11 @@ app.Run();
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddTunnelForwarder(options => { options.DefaultTunnelId = "123"; });
 builder.Services.AddTunnelClient(options =>
-{
-    options.TunnelHost = "wss://localhost:7100";
-    options.TunnelId = "123";
-});    
+    options with
+    {
+        TunnelHost = "wss://localhost:7100",
+        TunnelId = "123"
+    });
 var app = builder.Build();
 app.MapTunnelForwarder();
 app.Run();

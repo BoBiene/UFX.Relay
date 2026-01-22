@@ -9,19 +9,13 @@ namespace UFX.Relay.Tunnel;
 public static class TunnelBuilderExtensions
 {
     public static IServiceCollection AddTunnelClient(this IServiceCollection services, string host) =>
-      services.AddTunnelClient(options => options.TunnelHost = host);
+      services.AddTunnelClient(options => options with { TunnelHost = host });
 
-    public static IServiceCollection AddTunnelClient(this IServiceCollection services, Action<TunnelClientOptions>? clientOptions = null)
+    public static IServiceCollection AddTunnelClient(this IServiceCollection services, TunnelClientOptionsUpdateHandler? clientOptions = null)
     {
-        if (clientOptions != null)
-            services.Configure(clientOptions);
-        else
-            services.Configure<TunnelClientOptions>(_ => { }); // Empty default config
-
-
         services.TryAddSingleton<ITunnelClientOptionsStore>(provider =>
         {
-            var options = provider.GetRequiredService<IOptions<TunnelClientOptions>>().Value;
+            var options = clientOptions is null ? new() : clientOptions(new());
             return new TunnelClientOptionsStore(options);
         });
 
