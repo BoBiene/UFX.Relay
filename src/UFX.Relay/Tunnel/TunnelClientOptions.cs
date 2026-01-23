@@ -9,6 +9,6 @@ public sealed record TunnelClientOptions
     public string? TunnelHost { get; init; }
     public string TunnelPathTemplate { get; init; } = "/tunnel/{0}";
     public bool IsEnabled { get; init; } = true;
-    public IReadOnlyDictionary<string, string> RequestHeaders { get; init; } = ReadOnlyDictionary<string, string>.Empty;
+    public Dictionary<string, string> RequestHeaders { get; set; } = [];
     public Action<ClientWebSocketOptions>? WebSocketOptions { get; init; }
 }
