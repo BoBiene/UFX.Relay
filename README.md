@@ -424,6 +424,44 @@ Run all four samples and call:
 - `https://localhost:7400/client` -> forwarded over tunnel to `Sample.Aggregate.Client`.
 - `https://localhost:7400/internal` -> forwarded over tunnel to gateway, then proxied to `Sample.Aggregate.InternalApp`.
 
+### Chained proxy guidance for third-party apps (no app changes possible)
+
+When the downstream app is third-party and cannot be modified, path/base-url issues are the most common source of broken CSS/JS, redirects, and login flows.
+
+Typical options:
+
+- **Root mapping (preferred):** map a dedicated host/subdomain directly to the downstream app without a path prefix.
+  - Example: `legacy.example.com/*` -> downstream `/`
+  - Benefit: avoids most HTML/link rewrite problems.
+- **Prefix mapping:** expose downstream under a prefix (for example `/internal/*`) and remove the prefix before proxying.
+  - Example (YARP): `PathRemovePrefix=/internal`
+  - Benefit: works on a single host, but may require extra handling for redirects/cookies/absolute URLs.
+
+Important behavior to validate in chained scenarios:
+
+1. **Forwarded headers** (`X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Prefix`)
+   - Needed so generated redirects/callback links use the public URL.
+2. **Redirect handling**
+   - If upstream returns `Location: /login`, ensure clients resolve to `/internal/login` when using prefix mapping (or prefer host-based mapping).
+3. **Cookie path/domain**
+   - Auth cookies from upstream may need path/domain rewrite to remain valid behind the gateway prefix/host.
+4. **Absolute URLs in HTML/JS**
+   - Apps emitting absolute `/...` links can bypass your prefix unless app supports base-path config.
+5. **WebSockets/SSE/streaming uploads**
+   - Ensure proxy timeouts and upgrade handling are enabled end-to-end.
+
+If you control the downstream app (for example Blazor):
+
+- Configure forwarded headers (`UseForwardedHeaders`) so scheme/host/prefix are honored.
+- Configure base path correctly (for Blazor, dynamic `<base href>` is often required as documented above).
+
+If you **do not** control the downstream app:
+
+- Prefer dedicated host mapping over path-prefix mapping when possible.
+- Keep rewrites minimal and predictable (strip prefix, preserve host/proto headers).
+- Use path-prefix only when infrastructure constraints require it.
+
+
 ## Future
 
 * Scaling across multiple instances of the cloud service could be achieved by using [Microsoft.Orleans](https://github.com/dotnet/orleans) to store the TunnelId to instance mapping and redirect clients to the correct instance where the client is connected.
