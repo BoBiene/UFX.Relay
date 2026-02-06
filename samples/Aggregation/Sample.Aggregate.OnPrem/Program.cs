@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using UFX.Relay.Tunnel;
 using UFX.Relay.Tunnel.Forwarder;
+using Yarp.ReverseProxy.Configuration;
 
 Console.WriteLine(@"
 
@@ -30,23 +31,48 @@ builder.Services.AddTunnelClient(options =>
     });
 
 var downstreamAppBaseUrl = builder.Configuration["DownstreamApp:BaseUrl"] ?? "http://localhost:5600";
-builder.Services.AddHttpClient("downstream-app", client => client.BaseAddress = new Uri(downstreamAppBaseUrl));
+if (!downstreamAppBaseUrl.EndsWith('/'))
+{
+    downstreamAppBaseUrl += "/";
+}
+
+builder.Services.AddReverseProxy().LoadFromMemory(
+    [
+        new RouteConfig
+        {
+            RouteId = "internal-app-route",
+            ClusterId = "internal-app-cluster",
+            Match = new RouteMatch
+            {
+                Path = "/internal/{**catch-all}"
+            },
+            Transforms =
+            [
+                new Dictionary<string, string>
+                {
+                    ["PathRemovePrefix"] = "/internal"
+                }
+            ]
+        }
+    ],
+    [
+        new ClusterConfig
+        {
+            ClusterId = "internal-app-cluster",
+            Destinations = new Dictionary<string, DestinationConfig>
+            {
+                ["internal-app"] = new()
+                {
+                    Address = downstreamAppBaseUrl
+                }
+            }
+        }
+    ]);
 
 var app = builder.Build();
 
 app.MapGet("/gateway", () => "Hello from On-Prem gateway app");
 
-app.MapGet("/internal", async (IHttpClientFactory httpClientFactory) =>
-{
-    var httpClient = httpClientFactory.CreateClient("downstream-app");
-    return await httpClient.GetStringAsync("/");
-});
-
-app.MapGet("/internal/{**path}", async (string? path, IHttpClientFactory httpClientFactory) =>
-{
-    var httpClient = httpClientFactory.CreateClient("downstream-app");
-    return await httpClient.GetStringAsync(path ?? string.Empty);
-});
-
+app.MapReverseProxy();
 app.MapTunnelForwarder();
 await app.RunAsync();

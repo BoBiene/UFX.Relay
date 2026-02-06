@@ -416,7 +416,7 @@ A runnable sample is available under `samples/Aggregation`:
 
 - `Sample.Aggregate.Cloud`: cloud endpoint (`MapTunnelHost`) for incoming on-prem tunnel connections.
 - `Sample.Aggregate.Client`: on-prem app that opens the tunnel to cloud.
-- `Sample.Aggregate.OnPrem`: on-prem gateway that exposes both `/gateway` (own UI/API) and `/internal/*` routes.
+- `Sample.Aggregate.OnPrem`: on-prem gateway that exposes `/gateway` (own UI/API) and uses YARP reverse proxy for `/internal/*` with a `/internal` path-prefix removal transform.
 - `Sample.Aggregate.InternalApp`: downstream on-prem app reachable from the gateway over local network.
 
 Run all four samples and call:
