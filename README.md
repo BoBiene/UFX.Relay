@@ -399,6 +399,31 @@ app.MapTunnelForwarder();
 app.Run();
 ```
 
+### Multi-hop / chained routing
+
+You can compose UFX.Relay with another reverse-proxy hop when you need to reach a second on-prem web app through the first on-prem app.
+
+Common setup:
+
+1. SaaS app: `AddTunnelForwarder` + `MapTunnelHost`
+2. On-prem gateway app: `AddTunnelListener` + `AddTunnelClient` (connects to SaaS)
+3. On-prem gateway app exposes an additional route (for example via YARP or custom middleware) that proxies to another internal app reachable on the local network.
+
+In this setup the SaaS app still uses a single relay tunnel to the on-prem gateway, while the gateway handles the second hop on the local network.
+If the second system is not directly reachable, you can also run a second UFX.Relay tunnel and route by path/tunnel id (for example with `TunnelPathPrefixTransformer`).
+
+A runnable sample is available under `samples/Aggregation`:
+
+- `Sample.Aggregate.Cloud`: cloud endpoint (`MapTunnelHost`) for incoming on-prem tunnel connections.
+- `Sample.Aggregate.Client`: on-prem app that opens the tunnel to cloud.
+- `Sample.Aggregate.OnPrem`: on-prem gateway that exposes both `/gateway` (own UI/API) and `/internal/*` routes.
+- `Sample.Aggregate.InternalApp`: downstream on-prem app reachable from the gateway over local network.
+
+Run all four samples and call:
+
+- `https://localhost:7400/client` -> forwarded over tunnel to `Sample.Aggregate.Client`.
+- `https://localhost:7400/internal` -> forwarded over tunnel to gateway, then proxied to `Sample.Aggregate.InternalApp`.
+
 ## Future
 
 * Scaling across multiple instances of the cloud service could be achieved by using [Microsoft.Orleans](https://github.com/dotnet/orleans) to store the TunnelId to instance mapping and redirect clients to the correct instance where the client is connected.
