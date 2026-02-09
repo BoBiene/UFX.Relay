@@ -106,8 +106,11 @@ namespace Sample.Blazor
                     return;
                 }
 
-                var targetUri = $"{route.DestinationBaseUrl.TrimEnd('/')}{rewrittenPath}{context.Request.QueryString}";
-                var error = await forwarder.SendAsync(context, targetUri, httpClient, requestConfig, HttpTransformer.Default);
+                var destinationPrefix = route.DestinationBaseUrl.TrimEnd('/'); // e.g. "http://localhost:5600"
+
+                var transformer = new PathOverrideTransformer(rewrittenPath);
+
+                var error = await forwarder.SendAsync(context, destinationPrefix, httpClient, requestConfig, transformer);
 
                 if (error == ForwarderError.None)
                 {
@@ -116,8 +119,10 @@ namespace Sample.Blazor
 
                 var errorFeature = context.GetForwarderErrorFeature();
                 var errorException = errorFeature?.Exception;
+                var correlationId = Guid.NewGuid().ToString("N");
+                await Console.Error.WriteLineAsync($"Proxy error (CorrelationId: {correlationId}): {error}. Exception: {errorException}");
                 context.Response.StatusCode = StatusCodes.Status502BadGateway;
-                await context.Response.WriteAsync($"Proxy error: {error}. {errorException?.Message}");
+                await context.Response.WriteAsync($"Proxy error. Please contact support with CorrelationId: {correlationId}.");
             });
 
             await app.RunAsync();
