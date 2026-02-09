@@ -424,6 +424,12 @@ Run all four samples and call:
 - `https://localhost:7400/client` -> forwarded over tunnel to `Sample.Aggregate.Client`.
 - `https://localhost:7400/internal` -> forwarded over tunnel to gateway, then proxied to `Sample.Aggregate.InternalApp`.
 
+For a runtime-configurable UI sample, see `samples/Sample.Blazor`:
+
+- Open `/gateway-routes` to manage route entries in-memory (add/edit/delete).
+- A default route maps `/gateway/internal/*` to `http://localhost:5600/*` and strips `/internal` before forwarding.
+- You can configure path-prefix behavior (`StripPrefix` on/off), destination base URL, and enable/disable routes at runtime.
+
 ### Chained proxy guidance for third-party apps (no app changes possible)
 
 When the downstream app is third-party and cannot be modified, path/base-url issues are the most common source of broken CSS/JS, redirects, and login flows.

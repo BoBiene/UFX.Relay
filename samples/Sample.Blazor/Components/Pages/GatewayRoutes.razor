@@ -1,0 +1,148 @@
+@page "/gateway-routes"
+@using Sample.Blazor.Gateway
+@inject GatewayRouteStore RouteStore
+
+<h3>Gateway Routes (runtime)</h3>
+<p>
+    Configure path-prefix routes for the on-prem gateway proxy endpoint <code>/gateway/*</code>.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header">@(isEditMode ? "Edit Route" : "Add Route")</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" @bind="form.Name" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Path Prefix</label>
+            <input class="form-control" @bind="form.PathPrefix" placeholder="/internal" />
+            <div class="form-text">Matched under <code>/gateway</code>. Example: <code>/internal</code>.</div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Destination Base URL</label>
+            <input class="form-control" @bind="form.DestinationBaseUrl" placeholder="http://localhost:5600/" />
+        </div>
+
+        <div class="form-check mb-2">
+            <input id="stripPrefix" class="form-check-input" type="checkbox" @bind="form.StripPrefix" />
+            <label class="form-check-label" for="stripPrefix">Strip prefix before proxying (YARP-style PathRemovePrefix)</label>
+        </div>
+
+        <div class="form-check mb-3">
+            <input id="isEnabled" class="form-check-input" type="checkbox" @bind="form.IsEnabled" />
+            <label class="form-check-label" for="isEnabled">Enabled</label>
+        </div>
+
+        <button class="btn btn-primary me-2" @onclick="Save">@(isEditMode ? "Update" : "Add")</button>
+        @if (isEditMode)
+        {
+            <button class="btn btn-secondary" @onclick="ResetForm">Cancel</button>
+        }
+    </div>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Prefix</th>
+            <th>Destination</th>
+            <th>Mode</th>
+            <th>Status</th>
+            <th>Sample URL</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var route in routes)
+        {
+            <tr>
+                <td>@route.Name</td>
+                <td><code>@route.PathPrefix</code></td>
+                <td><code>@route.DestinationBaseUrl</code></td>
+                <td>@(route.StripPrefix ? "StripPrefix" : "KeepPrefix")</td>
+                <td>@(route.IsEnabled ? "Enabled" : "Disabled")</td>
+                <td><code>/gateway@route.PathPrefix</code></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => Edit(route)">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(route.Id)">Delete</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<GatewayRoute> routes = [];
+    private GatewayRouteForm form = GatewayRouteForm.New();
+    private bool isEditMode;
+
+    protected override void OnInitialized()
+    {
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        routes = RouteStore.GetAll().OrderBy(x => x.PathPrefix).ThenBy(x => x.Name).ToList();
+    }
+
+    private void Save()
+    {
+        var route = new GatewayRoute
+        {
+            Id = form.Id ?? Guid.NewGuid(),
+            Name = string.IsNullOrWhiteSpace(form.Name) ? "Route" : form.Name.Trim(),
+            PathPrefix = string.IsNullOrWhiteSpace(form.PathPrefix) ? "/" : form.PathPrefix.Trim(),
+            DestinationBaseUrl = string.IsNullOrWhiteSpace(form.DestinationBaseUrl) ? "http://localhost:5600/" : form.DestinationBaseUrl.Trim(),
+            StripPrefix = form.StripPrefix,
+            IsEnabled = form.IsEnabled
+        };
+
+        RouteStore.Upsert(route);
+        ResetForm();
+        Refresh();
+    }
+
+    private void Edit(GatewayRoute route)
+    {
+        isEditMode = true;
+        form = new GatewayRouteForm
+        {
+            Id = route.Id,
+            Name = route.Name,
+            PathPrefix = route.PathPrefix,
+            DestinationBaseUrl = route.DestinationBaseUrl,
+            StripPrefix = route.StripPrefix,
+            IsEnabled = route.IsEnabled
+        };
+    }
+
+    private void Delete(Guid id)
+    {
+        RouteStore.Delete(id);
+        ResetForm();
+        Refresh();
+    }
+
+    private void ResetForm()
+    {
+        isEditMode = false;
+        form = GatewayRouteForm.New();
+    }
+
+    private sealed class GatewayRouteForm
+    {
+        public Guid? Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string PathPrefix { get; set; } = "/internal";
+        public string DestinationBaseUrl { get; set; } = "http://localhost:5600/";
+        public bool StripPrefix { get; set; } = true;
+        public bool IsEnabled { get; set; } = true;
+
+        public static GatewayRouteForm New() => new();
+    }
+}

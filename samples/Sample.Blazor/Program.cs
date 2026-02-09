@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.HttpOverrides;
 using Sample.Blazor.Components;
+using Sample.Blazor.Gateway;
 using UFX.Relay.Tunnel;
 using UFX.Relay.Tunnel.Listener;
+using Yarp.ReverseProxy.Forwarder;
 
 namespace Sample.Blazor
 {
@@ -28,6 +30,27 @@ namespace Sample.Blazor
             // Add services to the container.
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
+
+            builder.Services.AddReverseProxy();
+            builder.Services.AddSingleton<GatewayRouteStore>();
+            builder.Services.AddSingleton<HttpMessageInvoker>(_ =>
+            {
+                var handler = new SocketsHttpHandler
+                {
+                    UseProxy = false,
+                    AllowAutoRedirect = false,
+                    AutomaticDecompression = System.Net.DecompressionMethods.None,
+                    UseCookies = false,
+                    EnableMultipleHttp2Connections = true,
+                    ActivityHeadersPropagator = null
+                };
+
+                return new HttpMessageInvoker(handler);
+            });
+            builder.Services.AddSingleton<ForwarderRequestConfig>(_ => new ForwarderRequestConfig
+            {
+                ActivityTimeout = TimeSpan.FromMinutes(2)
+            });
 
             builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
             builder.Services.AddTunnelClient(options =>
@@ -65,6 +88,37 @@ namespace Sample.Blazor
 
             app.MapRazorComponents<App>()
                 .AddInteractiveServerRenderMode();
+
+            app.MapGet("/gateway/routes", (GatewayRouteStore store) => Results.Ok(store.GetAll()));
+
+            app.Map("/gateway/{**catch-all}", async (HttpContext context, GatewayRouteStore store, IHttpForwarder forwarder, HttpMessageInvoker httpClient, ForwarderRequestConfig requestConfig) =>
+            {
+                var gatewayPrefix = "/gateway";
+                var requestPath = context.Request.Path.Value ?? "/";
+                var relativePath = requestPath.Length > gatewayPrefix.Length
+                    ? requestPath[gatewayPrefix.Length..]
+                    : "/";
+
+                if (!store.TryMatch(relativePath, out var route, out var rewrittenPath))
+                {
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    await context.Response.WriteAsync($"No matching route configured for '{relativePath}'.");
+                    return;
+                }
+
+                var targetUri = $"{route.DestinationBaseUrl.TrimEnd('/')}{rewrittenPath}{context.Request.QueryString}";
+                var error = await forwarder.SendAsync(context, targetUri, httpClient, requestConfig, HttpTransformer.Default);
+
+                if (error == ForwarderError.None)
+                {
+                    return;
+                }
+
+                var errorFeature = context.GetForwarderErrorFeature();
+                var errorException = errorFeature?.Exception;
+                context.Response.StatusCode = StatusCodes.Status502BadGateway;
+                await context.Response.WriteAsync($"Proxy error: {error}. {errorException?.Message}");
+            });
 
             await app.RunAsync();
         }
