@@ -123,9 +123,10 @@ namespace Sample.Blazor
                 await Console.Error.WriteLineAsync($"Proxy error (CorrelationId: {correlationId}): {error}. Exception: {errorException}");
                 context.Response.StatusCode = StatusCodes.Status502BadGateway;
                 await context.Response.WriteAsync($"Proxy error. Please contact support with CorrelationId: {correlationId}.");
-            });
 
-            await app.RunAsync();
+                await app.RunAsync();
+
+            });
         }
     }
 }
