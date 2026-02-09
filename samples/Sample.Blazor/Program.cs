@@ -120,8 +120,10 @@ namespace Sample.Blazor
 
                     var errorFeature = context.GetForwarderErrorFeature();
                     var errorException = errorFeature?.Exception;
+                    var correlationId = Guid.NewGuid().ToString("N");
+                    Console.Error.WriteLine($"Proxy error (CorrelationId: {correlationId}): {error}. Exception: {errorException}");
                     context.Response.StatusCode = StatusCodes.Status502BadGateway;
-                    await context.Response.WriteAsync($"Proxy error: {error}. {errorException?.Message}");
+                    await context.Response.WriteAsync($"Proxy error. Please contact support with CorrelationId: {correlationId}.");
                 }
                 finally
                 {
