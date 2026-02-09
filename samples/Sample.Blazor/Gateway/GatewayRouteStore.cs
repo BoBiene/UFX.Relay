@@ -35,7 +35,7 @@ public sealed class GatewayRouteStore
 
         lock (sync)
         {
-            var index = routes.FindIndex(r => r.Id == normalized.Id);
+            var index = FindIndexById(routes, normalized.Id);
             if (index >= 0)
             {
                 routes = routes.SetItem(index, normalized);
@@ -100,6 +100,20 @@ public sealed class GatewayRouteStore
         route = default!;
         rewrittenPath = string.Empty;
         return false;
+    }
+
+
+    private static int FindIndexById(ImmutableArray<GatewayRoute> source, Guid id)
+    {
+        for (var i = 0; i < source.Length; i++)
+        {
+            if (source[i].Id == id)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private static string NormalizePrefix(string prefix)
