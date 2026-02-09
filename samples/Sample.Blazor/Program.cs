@@ -106,18 +106,30 @@ namespace Sample.Blazor
                     return;
                 }
 
-                var targetUri = $"{route.DestinationBaseUrl.TrimEnd('/')}{rewrittenPath}{context.Request.QueryString}";
-                var error = await forwarder.SendAsync(context, targetUri, httpClient, requestConfig, HttpTransformer.Default);
+                var originalPath = context.Request.Path;
 
-                if (error == ForwarderError.None)
+                try
                 {
-                    return;
+                    context.Request.Path = rewrittenPath;
+                    var error = await forwarder.SendAsync(context, route.DestinationBaseUrl, httpClient, requestConfig, HttpTransformer.Default);
+
+                    if (error == ForwarderError.None)
+                    {
+                        return;
+                    }
+
+                    var errorFeature = context.GetForwarderErrorFeature();
+                    var errorException = errorFeature?.Exception;
+                    context.Response.StatusCode = StatusCodes.Status502BadGateway;
+                    await context.Response.WriteAsync($"Proxy error: {error}. {errorException?.Message}");
+                }
+                finally
+                {
+                    context.Request.Path = originalPath;
                 }
 
-                var errorFeature = context.GetForwarderErrorFeature();
-                var errorException = errorFeature?.Exception;
-                context.Response.StatusCode = StatusCodes.Status502BadGateway;
-                await context.Response.WriteAsync($"Proxy error: {error}. {errorException?.Message}");
+                return;
+
             });
 
             await app.RunAsync();

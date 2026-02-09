@@ -82,15 +82,16 @@ public sealed class GatewayRouteStore
                 }
 
                 var nextCharIndex = candidate.PathPrefix.Length;
+                var isRootPrefix = candidate.PathPrefix == "/";
                 var isExact = normalizedPath.Length == nextCharIndex;
                 var isSubPath = !isExact && normalizedPath[nextCharIndex] == '/';
-                if (!isExact && !isSubPath)
+                if (!isRootPrefix && !isExact && !isSubPath)
                 {
                     continue;
                 }
 
                 route = candidate;
-                rewrittenPath = candidate.StripPrefix
+                rewrittenPath = candidate.StripPrefix && !isRootPrefix
                     ? NormalizeRequestPath(normalizedPath[nextCharIndex..])
                     : normalizedPath;
                 return true;
