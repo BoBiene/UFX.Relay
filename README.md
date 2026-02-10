@@ -468,8 +468,295 @@ If you **do not** control the downstream app:
 - Use path-prefix only when infrastructure constraints require it.
 
 
+## Load Balancing with Multiple Server Instances
+
+### Understanding Connection Aggregation vs. Load Balancing
+
+It's important to distinguish between two different scaling scenarios:
+
+1. **Connection Aggregation** (demonstrated in `samples/Aggregation`): Multiple on-prem clients connecting to a single cloud instance to reduce the number of connections.
+2. **Load Balancing** (this section): Multiple cloud server instances (horizontal scaling) to handle increased traffic and provide high availability.
+
+The Aggregation example shows how to efficiently manage many tunnel connections by inverting the tunnel direction. However, it does **not** demonstrate load balancing across multiple server instances.
+
+### Load Balancing Architecture Patterns
+
+When deploying multiple instances of the UFX.Relay forwarder/server for load balancing, you need to handle the fact that WebSocket connections are stateful and tied to a specific server instance.
+
+#### Pattern 1: Sticky Sessions (Recommended for Most Cases)
+
+The simplest and most effective approach is to use **sticky sessions** (session affinity) at your load balancer level. This ensures that once a tunnel client connects to a specific server instance, all subsequent requests for that tunnel are routed to the same instance.
+
+**Architecture:**
+```
+Internet
+    ↓
+Load Balancer (with sticky sessions enabled)
+    ├─→ Forwarder Instance 1 (handles tunnels: A, B, C)
+    ├─→ Forwarder Instance 2 (handles tunnels: D, E, F)
+    └─→ Forwarder Instance 3 (handles tunnels: G, H, I)
+        ↑
+        └─ On-Prem Clients (connect via WebSocket)
+```
+
+**Load Balancer Configuration:**
+
+- **Azure Application Gateway**: Enable cookie-based session affinity
+- **AWS Application Load Balancer**: Enable sticky sessions with target group settings
+- **NGINX**: Use `ip_hash` or cookie-based stickiness
+- **HAProxy**: Use `balance source` or `cookie` directive
+- **Traefik**: Use `sticky.cookie` configuration
+
+**Example NGINX Configuration:**
+```nginx
+upstream relay_servers {
+    ip_hash;  # Ensures same client IP goes to same server
+    server relay1.example.com:443;
+    server relay2.example.com:443;
+    server relay3.example.com:443;
+}
+
+server {
+    listen 443 ssl;
+    server_name relay.example.com;
+    
+    location /tunnel/ {
+        proxy_pass https://relay_servers;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket timeout settings
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+```
+
+**Advantages:**
+- Simple to implement
+- No code changes required
+- Works with standard load balancers
+- Minimal overhead
+
+**Considerations:**
+- If a server instance fails, clients connected to it must reconnect and may be routed to a different instance
+- Uneven distribution if some tunnels are much more active than others
+- The UFX.Relay client has built-in reconnection logic with exponential backoff to handle instance failures
+
+#### Pattern 2: Distributed State with Service Discovery (Advanced)
+
+For more sophisticated scenarios requiring active-active failover or dynamic tunnel migration, you can use a distributed state management solution.
+
+**Architecture:**
+```
+Internet
+    ↓
+Load Balancer (round-robin or least-connections)
+    ├─→ Forwarder Instance 1 ←→ Redis/Orleans
+    ├─→ Forwarder Instance 2 ←→ Redis/Orleans
+    └─→ Forwarder Instance 3 ←→ Redis/Orleans
+        ↑                          ↑
+        └─ On-Prem Clients         └─ Shared Tunnel Registry
+```
+
+**Implementation Options:**
+
+**Option A: Custom ITunnelCollectionProvider with Redis**
+
+Create a custom tunnel collection provider that stores tunnel metadata in Redis:
+
+```csharp
+public class DistributedTunnelCollectionProvider : ITunnelCollectionProvider
+{
+    private readonly IConnectionMultiplexer _redis;
+    private readonly string _instanceId;
+    
+    public async Task<ITunnelCollection> GetTunnelCollectionAsync(
+        HttpContext context, 
+        CancellationToken cancellationToken)
+    {
+        // Check Redis for tunnel location
+        var tunnelId = await GetTunnelIdFromContext(context);
+        var instanceId = await _redis.GetDatabase()
+            .StringGetAsync($"tunnel:{tunnelId}:instance");
+            
+        if (instanceId.IsNullOrEmpty || instanceId == _instanceId)
+        {
+            // Tunnel is on this instance or not connected
+            return _localTunnelCollection;
+        }
+        else
+        {
+            // Tunnel is on another instance - redirect or proxy
+            throw new TunnelNotOnThisInstanceException(instanceId);
+        }
+    }
+}
+```
+
+When a tunnel connects, register it in Redis:
+```csharp
+await _redis.GetDatabase().StringSetAsync(
+    $"tunnel:{tunnelId}:instance", 
+    _instanceId,
+    expiry: TimeSpan.FromMinutes(5)  // Refresh with heartbeat
+);
+```
+
+**Option B: Microsoft Orleans (as mentioned in Future section)**
+
+Orleans provides a robust distributed virtual actor model that can be used to route requests:
+
+```csharp
+// Define a grain interface for tunnel routing
+public interface ITunnelGrain : IGrainWithStringKey
+{
+    Task<string> GetConnectedInstanceAsync();
+    Task RegisterInstanceAsync(string instanceId);
+}
+
+// In your application
+builder.Host.UseOrleans(siloBuilder =>
+{
+    siloBuilder.UseLocalhostClustering();
+    // Or use Azure Table Storage, Redis, etc. for production
+});
+
+// When tunnel connects
+var grain = _grainFactory.GetGrain<ITunnelGrain>(tunnelId);
+await grain.RegisterInstanceAsync(Environment.MachineName);
+
+// When forwarding requests
+var grain = _grainFactory.GetGrain<ITunnelGrain>(tunnelId);
+var instanceId = await grain.GetConnectedInstanceAsync();
+// Route to the correct instance
+```
+
+**Advantages:**
+- Enables active-active failover
+- Better load distribution
+- Can migrate tunnels between instances
+- Provides global view of all tunnels
+
+**Disadvantages:**
+- Much more complex to implement and operate
+- Requires distributed infrastructure (Redis, Orleans cluster, etc.)
+- Higher latency for request routing decisions
+- Only necessary for very large-scale deployments
+
+### Recommended Approach
+
+For **most deployments**, use **Pattern 1 (Sticky Sessions)**:
+
+1. Deploy multiple instances of your UFX.Relay forwarder behind a load balancer
+2. Configure sticky sessions on the load balancer (cookie-based or IP-based)
+3. Ensure WebSocket upgrade headers are properly forwarded
+4. Set appropriate timeouts for long-lived WebSocket connections
+5. Rely on UFX.Relay's built-in reconnection logic to handle instance failures
+
+**Pattern 2 (Distributed State)** is only needed for:
+- Very large scale (thousands of tunnels)
+- Requirements for zero-downtime instance replacement
+- Complex multi-region deployments
+- Active-active failover scenarios
+
+### Example: Kubernetes Deployment with Sticky Sessions
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ufx-relay-service
+spec:
+  type: LoadBalancer
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+  ports:
+    - port: 443
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: ufx-relay-forwarder
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ufx-relay-forwarder
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ufx-relay-forwarder
+  template:
+    metadata:
+      labels:
+        app: ufx-relay-forwarder
+    spec:
+      containers:
+      - name: forwarder
+        image: your-registry/ufx-relay-forwarder:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ASPNETCORE_URLS
+          value: "http://+:8080"
+```
+
+For NGINX Ingress with cookie-based affinity:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ufx-relay-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "ufx-relay-route"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"
+    nginx.ingress.kubernetes.io/websocket-services: "ufx-relay-service"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  rules:
+  - host: relay.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ufx-relay-service
+            port:
+              number: 443
+```
+
+### Health Checks and Monitoring
+
+When running multiple instances, implement health checks to ensure the load balancer routes traffic only to healthy instances:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHealthChecks();
+builder.Services.AddTunnelForwarder();
+
+var app = builder.Build();
+app.MapHealthChecks("/health");  // For load balancer health checks
+app.MapTunnelHost();
+app.MapTunnelForwarder();
+await app.RunAsync();
+```
+
+Configure your load balancer to use `/health` endpoint for instance health monitoring.
+
 ## Future
 
-* Scaling across multiple instances of the cloud service could be achieved by using [Microsoft.Orleans](https://github.com/dotnet/orleans) to store the TunnelId to instance mapping and redirect clients to the correct instance where the client is connected.
+* Add a reference implementation of Pattern 2 (Distributed State) using [Microsoft.Orleans](https://github.com/dotnet/orleans) to store the TunnelId to instance mapping and enable dynamic tunnel routing across multiple server instances.
 * Add an example of client certificate authentication for the WebSocket connection.
 * Consider adding TCP/UDP Forwarding over the tunnel

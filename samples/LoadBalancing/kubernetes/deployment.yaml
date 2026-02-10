@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ufx-relay-forwarder
+  labels:
+    app: ufx-relay-forwarder
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ufx-relay-forwarder
+  template:
+    metadata:
+      labels:
+        app: ufx-relay-forwarder
+    spec:
+      containers:
+      - name: forwarder
+        image: your-registry/ufx-relay-forwarder:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: ASPNETCORE_URLS
+          value: "http://+:8080"
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        # Add your application-specific configuration
+        - name: TunnelForwarder__DefaultTunnelId
+          value: "default"
+        
+        # Health check probes
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Resource limits (adjust based on your needs)
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      
+      # Anti-affinity to spread pods across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - ufx-relay-forwarder
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ufx-relay-service
+  labels:
+    app: ufx-relay-forwarder
+spec:
+  type: ClusterIP
+  # Enable session affinity based on client IP
+  # This ensures WebSocket connections stay with the same pod
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: ufx-relay-forwarder
