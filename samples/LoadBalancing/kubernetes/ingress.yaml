@@ -9,7 +9,7 @@ metadata:
     nginx.ingress.kubernetes.io/affinity-mode: "persistent"
     nginx.ingress.kubernetes.io/session-cookie-name: "ufx-relay-route"
     nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"  # 3 hours
-    nginx.ingress.kubernetes.io/session-cookie-samesite: "Strict"
+    nginx.ingress.kubernetes.io/session-cookie-samesite: "Lax"
     
     # WebSocket support
     nginx.ingress.kubernetes.io/websocket-services: "ufx-relay-service"

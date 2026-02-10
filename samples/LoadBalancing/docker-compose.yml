@@ -6,11 +6,9 @@ services:
     image: nginx:alpine
     container_name: ufx-relay-nginx
     ports:
-      - "443:443"
       - "80:80"
     volumes:
       - ./nginx/nginx-docker.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - forwarder1
       - forwarder2
