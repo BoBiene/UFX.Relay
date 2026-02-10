@@ -573,43 +573,42 @@ Load Balancer (with sticky sessions enabled)
         └─ On-Prem Clients (connect via WebSocket)
 ```
 
-**Load Balancer Configuration:**
+**Load Balancer Configuration Examples:**
 
-- **Azure Application Gateway**: Enable cookie-based session affinity
-- **AWS Application Load Balancer**: Enable sticky sessions with target group settings
-- **NGINX**: Use `ip_hash` or cookie-based stickiness
-- **HAProxy**: Use `balance source` or `cookie` directive
-- **Traefik**: Use `sticky.cookie` configuration
-
-**Example NGINX Configuration:**
+**NGINX (TunnelId-based - Recommended):**
 ```nginx
 upstream relay_servers {
-    ip_hash;  # Ensures same client IP goes to same server
+    # Hash on tunnelId query parameter
+    hash $arg_tunnelid consistent;
     server relay1.example.com:443;
     server relay2.example.com:443;
     server relay3.example.com:443;
 }
+```
 
-server {
-    listen 443 ssl;
-    server_name relay.example.com;
-    
-    location /tunnel/ {
-        proxy_pass https://relay_servers;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket timeout settings
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
+**NGINX (IP-based - Only if tunnel client and users share same IP):**
+```nginx
+upstream relay_servers {
+    ip_hash;  # Only works if same source IP for both connections
+    server relay1.example.com:443;
+    server relay2.example.com:443;
 }
 ```
+
+**HAProxy (TunnelId-based - Recommended):**
+```haproxy
+backend relay_backend
+    balance url_param tunnelid
+    hash-type consistent
+    server forwarder1 relay1.example.com:443
+    server forwarder2 relay2.example.com:443
+```
+
+**Cloud Platform Options:**
+- **Azure Application Gateway**: Configure path-based or header-based routing rules
+- **AWS Application Load Balancer**: Use target group stickiness on custom header/parameter
+- **Kubernetes**: Use Ingress with session affinity annotations
+- **Traefik**: Configure hash-based load balancing on header or parameter
 
 **Advantages:**
 - Simple to implement

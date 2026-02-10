@@ -22,11 +22,11 @@ Clients → Load Balancer → Multiple Cloud Instances
 
 | Platform | Configuration |
 |----------|--------------|
-| **NGINX** | `ip_hash` in upstream block |
-| **Kubernetes** | `sessionAffinity: ClientIP` in Service |
-| **Azure App Gateway** | Enable cookie-based session affinity |
-| **AWS ALB** | Enable target group stickiness |
-| **HAProxy** | `balance source` |
+| **NGINX** | `hash $arg_tunnelid consistent` in upstream block |
+| **Kubernetes** | `sessionAffinity: ClientIP` in Service + path-based routing |
+| **Azure App Gateway** | Path-based or header-based routing rules |
+| **AWS ALB** | Target group with stickiness on custom header/parameter |
+| **HAProxy** | `balance url_param tunnelid` |
 
 ### 2. Deploy Multiple Instances
 
@@ -44,7 +44,9 @@ Load Balancer: https://relay.example.com:443
 **NGINX Example:**
 ```nginx
 upstream relay_servers {
-    ip_hash;
+    # Hash on tunnelId - ensures same tunnel always goes to same instance
+    hash $arg_tunnelid consistent;
+    
     server relay1.example.com:443;
     server relay2.example.com:443;
     server relay3.example.com:443;
@@ -68,19 +70,40 @@ builder.Services.AddTunnelClient(options =>
     options with
     {
         TunnelHost = "wss://relay.example.com",  // Load balancer URL
-        TunnelId = "my-tunnel"
+        TunnelId = "my-tunnel"  // This ID will be used for routing
     });
+```
+
+Ensure TunnelId is included in end-user requests:
+```bash
+# As query parameter (recommended)
+https://relay.example.com/api/endpoint?tunnelid=my-tunnel
+
+# Or as header
+curl -H "X-Tunnel-Id: my-tunnel" https://relay.example.com/api/endpoint
 ```
 
 ### 5. Test It
 
 ```bash
-# Client connects and gets routed to one instance
-# All subsequent requests for that tunnel go to the same instance
-curl https://relay.example.com/tunnel/my-tunnel
+# Client connects with TunnelId and gets routed to one instance
+# All subsequent requests with the same TunnelId go to the same instance
+curl "https://relay.example.com/tunnel/connect?tunnelid=my-tunnel"
+
+# End-user request with same TunnelId routes to same instance
+curl "https://relay.example.com/api/endpoint?tunnelid=my-tunnel"
 ```
 
-## Why Sticky Sessions?
+## Why TunnelId-Based Routing?
+
+**The Critical Problem:**
+- Tunnel WebSocket connects to Instance 1
+- User HTTP request with same TunnelId might land on Instance 2
+- Instance 2 doesn't have the tunnel → 404 Error ❌
+
+**The Solution:**
+- Load balancer hashes on TunnelId
+- Both WebSocket and HTTP requests with same TunnelId → Same instance ✅
 
 ✅ **Simple**: No code changes, just load balancer config
 ✅ **Reliable**: Works with standard load balancers
