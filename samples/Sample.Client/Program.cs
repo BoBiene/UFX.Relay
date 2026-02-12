@@ -20,7 +20,9 @@ builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
 builder.Services.AddTunnelClient(options =>
     options with
     {
-        TunnelHost = "ws://localhost:5200",
+        // Note: Use wss:// for secure production connections. 
+        // This requires running with the 'https' profile in launchSettings.json
+        TunnelHost = "wss://localhost:7200",
         TunnelId = "123"
     });
 var app = builder.Build();
