@@ -13,7 +13,7 @@ Console.WriteLine(@"
  ╚═════╝ ╚═╝  ╚═══╝      ╚═╝     ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ 
                                                                                           
 
-    UFX.Relay Sample On-Prem Aggregate started
+    ReverseTunnel.Yarp Sample On-Prem Aggregate started
 ");
 
 var builder = WebApplication.CreateBuilder(args);

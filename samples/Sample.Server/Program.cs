@@ -12,7 +12,7 @@ Console.WriteLine(@"
 ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝
                                                  
 
-    UFX.Relay Sample Server started
+    ReverseTunnel.Yarp Sample Server started
 ");
 
 

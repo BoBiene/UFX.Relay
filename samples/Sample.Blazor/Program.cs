@@ -21,7 +21,7 @@ namespace Sample.Blazor
 ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝
                                                                                                   
                                                  
-   UFX.Relay Sample Blazor Client gestartet
+   ReverseTunnel.Yarp Sample Blazor Client gestartet
 ");
 
 

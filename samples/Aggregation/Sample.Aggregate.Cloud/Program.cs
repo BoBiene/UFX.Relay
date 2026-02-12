@@ -13,7 +13,7 @@ Console.WriteLine(@"
  ╚═════╝╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ 
                                                                         
 
-    UFX.Relay Sample Cloud Aggregate started
+    ReverseTunnel.Yarp Sample Cloud Aggregate started
 ");
 
 

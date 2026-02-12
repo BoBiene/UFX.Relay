@@ -12,7 +12,7 @@ Console.WriteLine(@"
  ╚═════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝   
                                               
 
-    UFX.Relay Sample Client started
+    ReverseTunnel.Yarp Sample Client started
 ");
 
 var builder = WebApplication.CreateBuilder(args);
