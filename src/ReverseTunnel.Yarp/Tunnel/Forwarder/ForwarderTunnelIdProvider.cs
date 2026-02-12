@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Options;
-using UFX.Relay.Abstractions;
+using ReverseTunnel.Yarp.Abstractions;
 
 namespace ReverseTunnel.Yarp.Tunnel.Forwarder;
 

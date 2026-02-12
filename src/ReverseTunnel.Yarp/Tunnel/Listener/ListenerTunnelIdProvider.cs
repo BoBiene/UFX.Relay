@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
 using ReverseTunnel.Yarp.Abstractions;
 
-namespace UFX.Relay.Tunnel.Listener;
+namespace ReverseTunnel.Yarp.Tunnel.Listener;
 
 public class ListenerTunnelIdProvider(IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientOptionsStore clientOptionsStore) : ITunnelIdProvider
 {

@@ -1,5 +1,5 @@
 using System.Net.WebSockets;
-using UFX.Relay.Abstractions;
+using ReverseTunnel.Yarp.Abstractions;
 
 namespace ReverseTunnel.Yarp.Tunnel;
 
