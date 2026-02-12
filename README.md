@@ -366,6 +366,48 @@ The Tunnel Host can be configured to require Authentication for the WebSocket co
 app.MapTunnelHost().RequireAuthorization();
 ```
 
+### Detecting Tunnel vs Normal HTTP Requests
+
+In scenarios where the client application receives requests through both the tunnel (from the forwarder) and normal HTTP endpoints, you can use middleware to distinguish between them. This is particularly useful for implementing forward-auth where you trust headers like `x-User` only when they come through the tunnel.
+
+All requests received through the tunnel are marked with an `ITunnelRequestFeature`. You can use the `IsFromTunnel()` extension method to check if a request came through the tunnel:
+
+```csharp
+app.Use(async (context, next) =>
+{
+    if (context.IsFromTunnel())
+    {
+        // Request came through the tunnel - trusted connection
+        // Safe to use x-User header for authentication
+        var user = context.Request.Headers["x-User"].ToString();
+        if (!string.IsNullOrEmpty(user))
+        {
+            // Set user identity based on trusted header
+            // ... your authentication logic here
+        }
+    }
+    else
+    {
+        // Request came through normal HTTP endpoint - untrusted
+        // Reject x-User header or require standard authentication
+        context.Request.Headers.Remove("x-User");
+    }
+    
+    await next(context);
+});
+```
+
+You can also access the tunnel feature directly to get additional information like the tunnel ID:
+
+```csharp
+var tunnelFeature = context.GetTunnelRequestFeature();
+if (tunnelFeature != null)
+{
+    var tunnelId = tunnelFeature.TunnelId;
+    // ... use tunnel information
+}
+```
+
 ## Connection Aggregation
 Connection aggregation helps when there are a large number of idle connections (such as WebSockets) that need to be maintained.
 [Azure Web PubSub](https://azure.microsoft.com/en-gb/products/web-pubsub) is an example of a cloud service that provides WebSocket connection aggregation.
