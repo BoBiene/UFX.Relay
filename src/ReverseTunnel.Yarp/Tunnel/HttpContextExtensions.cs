@@ -17,7 +17,7 @@ public static class HttpContextExtensions
     }
 
     /// <summary>
-    /// Checks if the current request was received through a UFX.Relay tunnel connection.
+    /// Checks if the current request was received through a ReverseTunnel.Yarp tunnel connection.
     /// </summary>
     /// <param name="context">The HttpContext to check</param>
     /// <returns>True if the request came through the tunnel, false if it came through a normal HTTP endpoint</returns>
