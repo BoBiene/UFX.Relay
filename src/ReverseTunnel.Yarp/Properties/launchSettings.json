@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "UFX.Relay": {
+    "ReverseTunnel.Yarp": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {
