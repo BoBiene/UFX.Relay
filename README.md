@@ -1,18 +1,18 @@
-# UFX.Relay
+# Trustless Reverse Tunnel for YARP
 
-UFX.Relay connects two ASPNet Core Middleware pipelines using a single WebSocket connection therefor extending a cloud application to an on-premise application instance.
-This is similar to services like [ngrok](https://ngrok.com) but rather than requiring an external 3rd party service, UFX.Relay is a self-contained pure ASPNet Core solution.
+ReverseTunnel.Yarp connects two ASPNet Core Middleware pipelines using a single WebSocket connection therefor extending a cloud application to an on-premise application instance.
+This is similar to services like [ngrok](https://ngrok.com) but rather than requiring an external 3rd party service, ReverseTunnel.Yarp is a self-contained pure ASPNet Core solution.
 
-The sample [Client](samples/Sample.Client/Program.cs) and [Server](samples/Sample.Server/Program.cs) projects demonstrate how to use UFX.Relay to connect a cloud application to an on-premise application with simple association of agents using a TunnelId. 
+The sample [Client](samples/Sample.Client/Program.cs) and [Server](samples/Sample.Server/Program.cs) projects demonstrate how to use ReverseTunnel.Yarp to connect a cloud application to an on-premise application with simple association of agents using a TunnelId. 
 A request to the server/forwarder with a TunnelId header will be forwarded to the corresponding client/listener that connects with the same TunnelId.
 
-The Server/Forwarder end of UFX.Relay leverages [YARP](https://github.com/microsoft/reverse-proxy) to forward ASPNet Core requests to the on-premise application via the WebSocket connection.
+The Server/Forwarder end of ReverseTunnel.Yarp leverages [YARP](https://github.com/microsoft/reverse-proxy) to forward ASPNet Core requests to the on-premise application via the WebSocket connection.
 At the lowest level [YARP](https://github.com/microsoft/reverse-proxy) converts a HTTPContext to a HTTPClientRequest and sends it to the on-premise application via the WebSocket connection which uses a [MultiplexingStream](https://github.com/dotnet/Nerdbank.Streams/blob/main/doc/MultiplexingStream.md) to allow multiple requests to be sent over a single connection.
 Note: This implementation uses [YARP DirectForwarding](https://github.com/microsoft/reverse-proxy/blob/main/src/ReverseProxy/Forwarder/HttpForwarder.cs) to forward requests to the on-premise application, any [YARP](https://github.com/microsoft/reverse-proxy) cluster configuration will not be used.
 
 ## Overview
 
-UFX.Relay comprises three components:
+ReverseTunnel.Yarp comprises three components:
 * Forwarder
 * Listener
 * Tunnel
@@ -93,7 +93,7 @@ app.Run();
 
 ## Sample Projects
 
-The sample projects demonstrate how to use UFX.Relay to connect a cloud application to an on-premise application with simple association of agents using a static RelayId, this in effect creates a static tunnel between the client and server.
+The sample projects demonstrate how to use ReverseTunnel.Yarp to connect a cloud application to an on-premise application with simple association of agents using a static RelayId, this in effect creates a static tunnel between the client and server.
 Once the sample [Client](samples/Sample.Client/Program.cs) and [Server](samples/Sample.Server/Program.cs) projects have started requests to https://localhost:7200/ will be forwarded to the client application.
 
 The sample server hosts on https://localhost:7200/ and the client hosts on https://localhost:7100.
@@ -135,7 +135,7 @@ The sample uses a simple association of agents using a static TunnelId '123'
 
 #### Blazor Support
 
-When using UFX.Relay Client with a Blazor app behind a reverse proxy, additional configuration is needed.
+When using ReverseTunnel.Yarp Client with a Blazor app behind a reverse proxy, additional configuration is needed.
 
 ##### Runtime Configuration
 
@@ -411,7 +411,7 @@ if (tunnelFeature != null)
 ## Connection Aggregation
 Connection aggregation helps when there are a large number of idle connections (such as WebSockets) that need to be maintained.
 [Azure Web PubSub](https://azure.microsoft.com/en-gb/products/web-pubsub) is an example of a cloud service that provides WebSocket connection aggregation.
-Inverting the WebSocket connection direction of UFX.Relay provides an equivalent capability to [Azure Web PubSub](https://azure.microsoft.com/en-gb/products/web-pubsub) but with the added benefit of being self-contained and not requiring a 3rd party service.
+Inverting the WebSocket connection direction of ReverseTunnel.Yarp provides an equivalent capability to [Azure Web PubSub](https://azure.microsoft.com/en-gb/products/web-pubsub) but with the added benefit of being self-contained and not requiring a 3rd party service.
 Typically, the Forwarder would be hosted on the cloud and the listener on-prem, this allows for the cloud application to connect to the on-prem application.
 However, it is possible to have the forwarder on-prem and the listener in the cloud while still using an out-bound WebSocket connection from the on-prem instance to the cloud thus allowing for connection aggregation of multiple on-prem connections via a single connection to a cloud service.
 
@@ -443,7 +443,7 @@ app.Run();
 
 ### Multi-hop / chained routing
 
-You can compose UFX.Relay with another reverse-proxy hop when you need to reach a second on-prem web app through the first on-prem app.
+You can compose ReverseTunnel.Yarp with another reverse-proxy hop when you need to reach a second on-prem web app through the first on-prem app.
 
 Common setup:
 
@@ -452,7 +452,7 @@ Common setup:
 3. On-prem gateway app exposes an additional route (for example via YARP or custom middleware) that proxies to another internal app reachable on the local network.
 
 In this setup the SaaS app still uses a single relay tunnel to the on-prem gateway, while the gateway handles the second hop on the local network.
-If the second system is not directly reachable, you can also run a second UFX.Relay tunnel and route by path/tunnel id (for example with `TunnelPathPrefixTransformer`).
+If the second system is not directly reachable, you can also run a second ReverseTunnel.Yarp tunnel and route by path/tunnel id (for example with `TunnelPathPrefixTransformer`).
 
 A runnable sample is available under `samples/Aggregation`:
 

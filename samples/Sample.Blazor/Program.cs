@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.HttpOverrides;
 using Sample.Blazor.Components;
 using Sample.Blazor.Gateway;
-using UFX.Relay.Tunnel;
-using UFX.Relay.Tunnel.Listener;
+using ReverseTunnel.Yarp.Tunnel;
+using ReverseTunnel.Yarp.Tunnel.Listener;
 using Yarp.ReverseProxy.Forwarder;
 
 namespace Sample.Blazor

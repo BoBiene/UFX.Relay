@@ -1,7 +1,7 @@
 using Host;
 using Microsoft.AspNetCore.HttpLogging;
-using UFX.Relay.Tunnel;
-using UFX.Relay.Tunnel.Forwarder;
+using ReverseTunnel.Yarp.Tunnel;
+using ReverseTunnel.Yarp.Tunnel.Forwarder;
 
 foreach (System.Collections.DictionaryEntry env in Environment.GetEnvironmentVariables())
     Console.WriteLine($"Environment Variable: {env.Key}:{env.Value}");
