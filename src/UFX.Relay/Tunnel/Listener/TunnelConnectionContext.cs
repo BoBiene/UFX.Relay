@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Http.Features;
 using Nerdbank.Streams;
+using UFX.Relay.Abstractions;
 
 namespace UFX.Relay.Tunnel.Listener;
 
@@ -12,14 +13,17 @@ public class TunnelConnectionContext : ConnectionContext,
     IConnectionIdFeature,
     IConnectionItemsFeature,
     IConnectionLifetimeFeature,
-    IConnectionTransportFeature
+    IConnectionTransportFeature,
+    ITunnelRequestFeature
 {
     private readonly CancellationTokenSource cts = new();
     private readonly MultiplexingStream.Channel channel;
+    private readonly TunnelEndpoint endpoint;
 
     public TunnelConnectionContext(string connectionId, MultiplexingStream.Channel channel, TunnelEndpoint endpoint)
     {
         this.channel = channel;
+        this.endpoint = endpoint;
         ConnectionId = connectionId;
         Transport = channel;
         _ = this.channel.Completion.ContinueWith(_ => cts.Cancel(), TaskScheduler.Default);
@@ -29,7 +33,10 @@ public class TunnelConnectionContext : ConnectionContext,
         Features.Set<IConnectionItemsFeature>(this);
         Features.Set<IConnectionLifetimeFeature>(this);
         Features.Set<IConnectionTransportFeature>(this);
+        Features.Set<ITunnelRequestFeature>(this);
     }
+
+    public string TunnelId => endpoint.TunnelId ?? string.Empty;
 
     public override string ConnectionId { get; set; }
     public override IFeatureCollection Features { get; } = new FeatureCollection();
