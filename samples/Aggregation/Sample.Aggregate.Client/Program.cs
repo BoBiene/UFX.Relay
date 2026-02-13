@@ -1,8 +1,8 @@
 ﻿
 using Microsoft.AspNetCore.Builder;
-using UFX.Relay.Tunnel;
-using UFX.Relay.Tunnel.Forwarder;
-using UFX.Relay.Tunnel.Listener;
+using ReverseTunnel.Yarp.Tunnel;
+using ReverseTunnel.Yarp.Tunnel.Forwarder;
+using ReverseTunnel.Yarp.Tunnel.Listener;
 
 Console.WriteLine(@"
 
@@ -14,7 +14,7 @@ Console.WriteLine(@"
  ╚═════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝       ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ 
                                                                                                                                                                       
 
-    UFX.Relay Sample On-Prem Aggregate started
+    ReverseTunnel.Yarp Sample On-Prem Aggregate started
 ");
 
 var builder = WebApplication.CreateBuilder(args);

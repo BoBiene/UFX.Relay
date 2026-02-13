@@ -1,5 +1,5 @@
-﻿using UFX.Relay.Tunnel;
-using UFX.Relay.Tunnel.Forwarder;
+﻿using ReverseTunnel.Yarp.Tunnel;
+using ReverseTunnel.Yarp.Tunnel.Forwarder;
 
 
 Console.WriteLine(@"
@@ -12,20 +12,20 @@ Console.WriteLine(@"
 ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝
                                                  
 
-    UFX.Relay Sample Server started
+    ReverseTunnel.Yarp Sample Server started
 ");
 
 
 var builder = WebApplication.CreateBuilder(args);
 
-TunnelPathPrefixTransformer prefixTransformer = new("ufx");
+TunnelPathPrefixTransformer prefixTransformer = new("arty");
 builder.Services.AddTunnelForwarder(options =>
 {
     options.DefaultTunnelId = "123";
     options.TunnelIdFromContext = prefixTransformer.GetTunnelIdFromContext;
     options.Transformer = context =>
     {
-        // Remove /ufx/{tunnelId} from the request path before forwarding
+        // Remove /arty/{tunnelId} from the request path before forwarding
         context.RequestTransforms.Add(prefixTransformer);
     };
 });

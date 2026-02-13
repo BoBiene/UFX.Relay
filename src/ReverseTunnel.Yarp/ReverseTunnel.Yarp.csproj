@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+        <IsAotCompatible>true</IsAotCompatible>
+        <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+        <IsPackable>true</IsPackable>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <None Remove="Properties\launchSettings.json" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Nerdbank.Streams" Version="2.11.74" />
+      <PackageReference Include="Yarp.ReverseProxy" Version="2.1.0" />
+    </ItemGroup>
+
+</Project>

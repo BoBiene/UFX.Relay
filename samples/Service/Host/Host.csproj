@@ -1,13 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <OutputType>Exe</OutputType>
         <TargetFramework>net8.0</TargetFramework>
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\src\UFX.Relay\UFX.Relay.csproj" />
+      <ProjectReference Include="..\..\..\src\ReverseTunnel.Yarp\ReverseTunnel.Yarp.csproj" />
     </ItemGroup>
 
     <ItemGroup>
