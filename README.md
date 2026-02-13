@@ -1,9 +1,14 @@
-# Trustless Reverse Tunnel for YARP
-
 <div align="center">
 
-![ReverseTunnel.Yarp Logo](ReverseTunnel.Yarp.Logo.png)
+ <img src="ReverseTunnel.Yarp.Logo.png" width="220" alt="ReverseTunnel.Yarp Logo" />
 
+  <h3><b>Trustless Reverse Tunnel for YARP</b></h3> 
+  <i >
+    Outbound-only secure connectivity for ASP.NET Core
+  </i>
+  <br/>
+<br/>
+  
 [![CI](https://github.com/BoBiene/UFX.Relay/actions/workflows/ci.yml/badge.svg)](https://github.com/BoBiene/UFX.Relay/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/ReverseTunnel.Yarp.svg)](https://www.nuget.org/packages/ReverseTunnel.Yarp/)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/ReverseTunnel.Yarp.svg)](https://www.nuget.org/packages/ReverseTunnel.Yarp/)
@@ -12,6 +17,8 @@
 </div>
 
 > **Note:** This is a fork of [UnifiedFX/UFX.Relay](https://github.com/unifiedfx/UFX.Relay), rebranded and enhanced for broader community use.
+
+# Trustless Reverse Tunnel for YARP
 
 ## Overview
 
