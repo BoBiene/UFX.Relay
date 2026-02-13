@@ -2,7 +2,7 @@
 
  <img src="ReverseTunnel.Yarp.Logo.png" width="220" alt="ReverseTunnel.Yarp Logo" />
 
-  <h3><b>Trustless Reverse Tunnel for YARP</b></h3> 
+  <h3><b>Active Reverse Tunnel for YARP (ARTY)</b></h3> 
   <i >
     Outbound-only secure connectivity for ASP.NET Core
   </i>
@@ -18,7 +18,7 @@
 
 > **Note:** This is a fork of [UnifiedFX/UFX.Relay](https://github.com/unifiedfx/UFX.Relay), rebranded and enhanced for broader community use.
 
-# Trustless Reverse Tunnel for YARP
+# Active Reverse Tunnel for YARP (ARTY)
 
 ## Overview
 

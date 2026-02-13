@@ -5,20 +5,20 @@
 To extract the TunnelId from a path segment and transform the request path:
 
 ```csharp
-TunnelPathPrefixTransformer prefixTransformer = new TunnelPathPrefixTransformer("ufx");
+TunnelPathPrefixTransformer prefixTransformer = new TunnelPathPrefixTransformer("arty");
 builder.Services.AddTunnelForwarder(options =>
 {
     options.DefaultTunnelId = "123";
     options.TunnelIdFromContext = prefixTransformer.GetTunnelIdFromContext;
     options.Transformer = context =>
     {
-        // Remove /ufx/{tunnelId} from the request path before forwarding
+        // Remove /arty/{tunnelId} from the request path before forwarding
         context.RequestTransforms.Add(prefixTransformer);
     };
 });
 ```
 
-This enables forwarding using URLs like `/ufx/{tunnelId}/`.
+This enables forwarding using URLs like `/arty/{tunnelId}/`.
 
 > [!IMPORTANT]  
 > Ensure to set `UseForwardedHeaders` and `base` href in the Blazor app as mentioned in [Blazor Support](blazor-support.md).

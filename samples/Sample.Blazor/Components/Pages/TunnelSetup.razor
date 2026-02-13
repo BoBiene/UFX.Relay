@@ -28,7 +28,7 @@
 
 @if (!string.IsNullOrWhiteSpace(tunnelHost) && !string.IsNullOrWhiteSpace(tunnelId) && Uri.TryCreate(tunnelHost, UriKind.Absolute, out var tunnelHostUri))
 {
-    <a class="btn btn-outline-secondary" href="@($"{(tunnelHostUri.Scheme == "wss" ? "https" : "http")}://{tunnelHostUri.Host}:{tunnelHostUri.Port}/ufx/{tunnelId}/")" target="_blank">Open Tunnel</a>
+    <a class="btn btn-outline-secondary" href="@($"{(tunnelHostUri.Scheme == "wss" ? "https" : "http")}://{tunnelHostUri.Host}:{tunnelHostUri.Port}/arty/{tunnelId}/")" target="_blank">Open Tunnel</a>
 }
 
 <hr />
