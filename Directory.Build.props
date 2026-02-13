@@ -17,8 +17,9 @@
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/BoBiene/UFX.Relay</PackageProjectUrl>
-    <PackageIcon>logo_icon_128.png</PackageIcon>
+    <PackageIcon>ReverseTunnel.Yarp.Logo.png</PackageIcon>
     <PackageTags>Relay Tunnel YARP ReverseTunnel C# .NET</PackageTags>
+    <PackageReadme>README.md</PackageReadme>
   </PropertyGroup>
   <!-- Common compile parameters -->
   <PropertyGroup>
@@ -34,7 +35,8 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="$(SourceRoot)assets/logo_icon_128.png" Pack="true" Visible="false" PackagePath="/" />
+    <None Include="$(SourceRoot)ReverseTunnel.Yarp.Logo.png" Pack="true" Visible="false" PackagePath="/" />
+    <None Include="$(SourceRoot)README.md" Pack="true" Visible="false" PackagePath="/" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Nerdbank.GitVersioning" Condition="!Exists('packages.config')">
