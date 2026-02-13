@@ -4,7 +4,7 @@ This document describes how to publish packages to NuGet.org.
 
 ## Automated Publishing
 
-The repository uses GitHub Actions to automatically publish NuGet packages to nuget.org when a new version tag is pushed.
+The repository uses GitHub Actions to automatically publish NuGet packages to nuget.org for both stable releases and preview versions.
 
 ### Prerequisites
 
@@ -25,9 +25,9 @@ The repository must have the `NUGET_APIKEY` secret configured in GitHub reposito
    - Value: Paste your NuGet.org API key
    - Click "Add secret"
 
-### Publishing Process
+## Publishing Stable Releases
 
-Once the secret is configured, publishing is automatic:
+Once the secret is configured, publishing stable releases is automatic:
 
 1. Create and push a version tag:
    ```bash
@@ -49,3 +49,21 @@ The workflow uses:
 - **Secret**: `NUGET_APIKEY` for authentication
 - **Target**: `https://api.nuget.org/v3/index.json`
 - **Packages**: All `.nupkg` files from Release configuration
+
+## Publishing Preview Packages
+
+Preview packages are automatically published on every push to the `main` branch:
+
+1. The [CI workflow](.github/workflows/ci.yml) runs on every commit to `main`
+2. [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) generates preview version numbers (e.g., `0.5.2-beta.123`)
+3. Packages are built and published to:
+   - **GitHub Packages** - for easy access within GitHub
+   - **NuGet.org** - for public preview consumption
+
+### Preview Version Format
+
+Preview versions follow the format defined in `version.json`:
+- Base version: `0.5.2-beta` (or current version)
+- Full preview version: `0.5.2-beta.{height}` where `{height}` is the git commit height
+
+This allows developers and early adopters to test new features before stable releases.
