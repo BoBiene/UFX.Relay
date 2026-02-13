@@ -30,9 +30,6 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-  </PropertyGroup>
   <ItemGroup>
     <None Include="$(SourceRoot)assets/logo_icon_128.png" Pack="true" Visible="false" PackagePath="/" />
   </ItemGroup>
