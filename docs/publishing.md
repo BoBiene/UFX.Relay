@@ -35,7 +35,7 @@ Once the secret is configured, publishing stable releases is automatic:
    git push origin v1.0.0
    ```
 
-2. The [publish workflow](.github/workflows/publish.yml) will automatically:
+2. The [publish workflow](../.github/workflows/publish.yml) will automatically:
    - Build the project
    - Pack all projects as NuGet packages
    - Push packages to nuget.org
@@ -54,7 +54,7 @@ The workflow uses:
 
 Preview packages are automatically published on every push to the `main` branch:
 
-1. The [CI workflow](.github/workflows/ci.yml) runs on every commit to `main`
+1. The [CI workflow](../.github/workflows/ci.yml) runs on every commit to `main`
 2. [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) generates preview version numbers (e.g., `0.5.2-beta.123`)
 3. Packages are built and published to:
    - **GitHub Packages** - for easy access within GitHub

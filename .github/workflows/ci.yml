@@ -42,7 +42,7 @@ jobs:
             --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
       - name: Push to NuGet.org
         if: ${{ github.event_name != 'pull_request' }}
-        run: dotnet nuget push **/Release/*.nupkg --skip-duplicate -k ${{ secrets.NUGET_APIKEY }} -s https://api.nuget.org/v3/index.json
+        run: dotnet nuget push **/Release/*.nupkg --skip-duplicate --api-key ${{ secrets.NUGET_APIKEY }} -s https://api.nuget.org/v3/index.json
   docker:
     runs-on: ubuntu-latest
     # only run if in 'unifiedfx/UFX.Relay' -> fix for forked repos
