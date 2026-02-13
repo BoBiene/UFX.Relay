@@ -24,7 +24,7 @@ jobs:
         run: dotnet pack --configuration Release -p:Version=${GITHUB_REF##*/v} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
 
       - name: Push All Packages
-        run: dotnet nuget push **/Release/*.nupkg --skip-duplicate -k ${{ secrets.NUGET_APIKEY }} -s https://api.nuget.org/v3/index.json
+        run: dotnet nuget push **/Release/*.nupkg --skip-duplicate --api-key ${{ secrets.NUGET_APIKEY }} -s https://api.nuget.org/v3/index.json
 
       - name: Create a GitHub release
         uses: ncipollo/release-action@v1
