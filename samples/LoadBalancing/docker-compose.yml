@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # NGINX Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: ufx-relay-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx-docker.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - forwarder1
+      - forwarder2
+      - forwarder3
+    networks:
+      - relay-network
+
+  # UFX.Relay Forwarder Instance 1
+  forwarder1:
+    image: your-registry/ufx-relay-forwarder:latest
+    container_name: ufx-relay-forwarder1
+    environment:
+      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_ENVIRONMENT=Development
+      - INSTANCE_ID=forwarder1
+    ports:
+      - "8081:80"
+    networks:
+      - relay-network
+    restart: unless-stopped
+
+  # UFX.Relay Forwarder Instance 2
+  forwarder2:
+    image: your-registry/ufx-relay-forwarder:latest
+    container_name: ufx-relay-forwarder2
+    environment:
+      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_ENVIRONMENT=Development
+      - INSTANCE_ID=forwarder2
+    ports:
+      - "8082:80"
+    networks:
+      - relay-network
+    restart: unless-stopped
+
+  # UFX.Relay Forwarder Instance 3
+  forwarder3:
+    image: your-registry/ufx-relay-forwarder:latest
+    container_name: ufx-relay-forwarder3
+    environment:
+      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_ENVIRONMENT=Development
+      - INSTANCE_ID=forwarder3
+    ports:
+      - "8083:80"
+    networks:
+      - relay-network
+    restart: unless-stopped
+
+  # Example client that connects to the load balancer
+  client:
+    image: your-registry/ufx-relay-client:latest
+    container_name: ufx-relay-client
+    environment:
+      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_ENVIRONMENT=Development
+      - TunnelClient__TunnelHost=ws://nginx:80  # Connect through load balancer
+      - TunnelClient__TunnelId=demo-tunnel
+    ports:
+      - "7100:80"
+    depends_on:
+      - nginx
+    networks:
+      - relay-network
+    restart: unless-stopped
+
+networks:
+  relay-network:
+    driver: bridge

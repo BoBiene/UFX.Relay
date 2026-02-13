@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ufx-relay-ingress
+  annotations:
+    # NGINX Ingress Controller annotations
+    # Enable cookie-based session affinity
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "ufx-relay-route"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"  # 3 hours
+    nginx.ingress.kubernetes.io/session-cookie-samesite: "Lax"
+    
+    # WebSocket support
+    nginx.ingress.kubernetes.io/websocket-services: "ufx-relay-service"
+    
+    # Extended timeouts for WebSocket connections
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    
+    # SSL/TLS configuration
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # If using cert-manager
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    
+    # Additional headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Forwarded-Host $host;
+      proxy_set_header X-Forwarded-Port $server_port;
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - relay.example.com
+    secretName: ufx-relay-tls
+  rules:
+  - host: relay.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ufx-relay-service
+            port:
+              number: 80
