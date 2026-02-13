@@ -234,6 +234,8 @@ For more detailed configuration and advanced use cases, see the documentation:
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+For information about publishing releases to NuGet.org, see the [Publishing Guide](docs/publishing.md).
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
