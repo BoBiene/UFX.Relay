@@ -26,28 +26,40 @@ namespace ReverseTunnel.Yarp.Tunnel
         {
             var cts = CancellationTokenSource.CreateLinkedTokenSource(tokens);
             var token = cts.Token;
-            _ = Task.Factory.StartNew(async () =>
+            _ = Task.Run(async () =>
             {
-                while (!token.IsCancellationRequested)
+                try
                 {
-                    var delay = ComputeBackoff();
-                    try
+                    while (!token.IsCancellationRequested)
                     {
+                        var delay = ComputeBackoff();
                         await Task.Delay(delay, token);
                         _errorCount = await _func(token) switch
                         {
                             true => Math.Min(_errorCount + 1, 20),
                             false => 0
                         };
-
-                    }
-                    catch (Exception)
-                    {
-                        break;
                     }
                 }
-                cts.Dispose();
-            }, token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    // Expected cancellation, exit gracefully
+                }
+                catch (Exception)
+                {
+                    // Unexpected error in the worker function - increment error count and restart the loop
+                    _errorCount = Math.Min(_errorCount + 1, 20);
+                    var currentCts = _cancellationTokenSource;
+                    if (currentCts is not null && !currentCts.IsCancellationRequested)
+                    {
+                        CreateWorker(currentCts.Token);
+                    }
+                }
+                finally
+                {
+                    cts.Dispose();
+                }
+            });
         }
 
         private TimeSpan ComputeBackoff()

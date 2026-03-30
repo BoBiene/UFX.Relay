@@ -43,9 +43,20 @@ public class Tunnel(MultiplexingStream stream) : IAsyncDisposable, IDisposable
 
     private async void StreamOnChannelOffered(object? sender, MultiplexingStream.ChannelOfferEventArgs e)
     {
-        if (stream == null) throw new ObjectDisposedException(nameof(stream));
-        var channel = await stream.AcceptChannelAsync(e.Name);
-        await channels.Writer.WriteAsync(channel);
+        try
+        {
+            if (stream == null) return;
+            var channel = await stream.AcceptChannelAsync(e.Name);
+            await channels.Writer.WriteAsync(channel);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Stream was disposed while accepting channel - expected during shutdown
+        }
+        catch (Exception)
+        {
+            // Swallow to prevent unobserved exception from async void
+        }
     }
 
     public override string ToString() => (Uri?.ToString() ?? base.ToString())!;
