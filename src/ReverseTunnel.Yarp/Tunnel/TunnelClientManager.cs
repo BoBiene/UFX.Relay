@@ -174,10 +174,13 @@ namespace ReverseTunnel.Yarp.Tunnel
                         {
                             if (t.IsFaulted)
                             {
-                                _logger.LogDebug(t.Exception, "Tunnel stream ended with error, triggering reconnect");
+                                _logger.LogDebug(t.Exception, "Tunnel stream ended with error");
                             }
+                            // State change to Disconnected triggers ConnectionStateChanged event.
+                            // Consumers can then refresh credentials
+                            // and call ITunnelClientOptionsStore.Update(), which fires OptionsChanged
+                            // and automatically triggers a reconnect with the new credentials.
                             UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
-                            TriggerReconnect();
                         }, TaskScheduler.Default);
 
                         
