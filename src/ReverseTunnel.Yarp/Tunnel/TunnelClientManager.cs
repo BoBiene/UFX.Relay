@@ -170,9 +170,14 @@ namespace ReverseTunnel.Yarp.Tunnel
                         }, cancellationToken);
 
                         var tunnel = new TunnelClient(websocket, stream) { Uri = uri };
-                        tunnel.Completion.ContinueWith(_ =>
+                        tunnel.Completion.ContinueWith(t =>
                         {
+                            if (t.IsFaulted)
+                            {
+                                _logger.LogDebug(t.Exception, "Tunnel stream ended with error, triggering reconnect");
+                            }
                             UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
+                            TriggerReconnect();
                         }, TaskScheduler.Default);
 
                         
