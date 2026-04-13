@@ -3,31 +3,42 @@ name: Publish
 on:
   push:
     tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+      - 'v*'
 
 permissions:
   contents: write
 
 jobs:
-  build:
-
+  publish:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        with:
+          fetch-depth: 0 # required by NBGV to compute the correct version from git history
+
+      - uses: dotnet/nbgv@master
+        with:
+          setAllVars: true
+
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
-      - name: Pack All Projects
-        run: dotnet pack --configuration Release -p:Version=${GITHUB_REF##*/v} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+      - run: dotnet restore
 
-      - name: Push All Packages
+      - run: dotnet pack --no-restore --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+
+      - name: Push to NuGet.org
         run: dotnet nuget push **/Release/*.nupkg --skip-duplicate --api-key ${{ secrets.NUGET_APIKEY }} -s https://api.nuget.org/v3/index.json
 
-      - name: Create a GitHub release
-        uses: ncipollo/release-action@v1
-        with:
-          skipIfReleaseExists: true
-          artifacts: "**/Release/*.nupkg,**/Release/*.snupkg"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          gh release create "${{ github.ref_name }}" \
+            --generate-notes \
+            **/Release/*.nupkg \
+            **/Release/*.snupkg

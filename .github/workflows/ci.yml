@@ -6,8 +6,28 @@ name: CI
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "samples/**"
+      - ".github/workflows/ci.yml"
+      - "Directory.Build.props"
+      - "ReverseTunnel.Yarp.sln"
+      - "version.json"
+      - "**/*.csproj"
+      - "**/*.props"
+      - "**/*.targets"
   pull_request:
     branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "samples/**"
+      - ".github/workflows/ci.yml"
+      - "Directory.Build.props"
+      - "ReverseTunnel.Yarp.sln"
+      - "version.json"
+      - "**/*.csproj"
+      - "**/*.props"
+      - "**/*.targets"
 
 jobs:
   build:

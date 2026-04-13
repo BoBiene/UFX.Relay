@@ -1,69 +1,83 @@
-# Publishing to NuGet.org
+# Publishing and Release Process
 
-This document describes how to publish packages to NuGet.org.
+This repository uses GitHub Actions and Nerdbank.GitVersioning (NBGV) for both preview and stable package publishing.
 
-## Automated Publishing
+## Prerequisites
 
-The repository uses GitHub Actions to automatically publish NuGet packages to nuget.org for both stable releases and preview versions.
+1. Repository secret `NUGET_APIKEY` is configured in GitHub Actions secrets.
+2. Local tooling is available when doing manual release preparation:
+   - `git`
+   - `.NET SDK`
+   - `nbgv` CLI (for example: `dotnet tool install -g nbgv`)
+3. Your local branch is clean before running `nbgv prepare-release`.
 
-### Prerequisites
+## How Publishing Works in This Repository
 
-The repository must have the `NUGET_APIKEY` secret configured in GitHub repository settings.
+- [ci.yml](../.github/workflows/ci.yml)
+  - Runs on pushes to `main` and PRs targeting `main`.
+  - On `main` pushes, publishes preview packages to GitHub Packages and NuGet.org.
+- [publish.yml](../.github/workflows/publish.yml)
+  - Runs on tags matching `v*`.
+  - Packs with `-p:Version=${GITHUB_REF##*/v}` and publishes to NuGet.org.
+  - Creates a GitHub Release and uploads `.nupkg` and `.snupkg` artifacts.
 
-#### Setting up the NUGET_APIKEY Secret
+## Preview Releases (Automatic)
 
-1. Generate an API key from [nuget.org](https://www.nuget.org/account/apikeys)
-   - Go to your NuGet.org account settings
-   - Navigate to API Keys
-   - Create a new API key with "Push" permissions
-   - Copy the generated API key
+Every push to `main` creates preview packages.
 
-2. Add the secret to GitHub repository settings:
-   - Go to repository Settings → Secrets and variables → Actions
-   - Click "New repository secret"
-   - Name: `NUGET_APIKEY`
-   - Value: Paste your NuGet.org API key
-   - Click "Add secret"
+- Version base comes from [version.json](../version.json), currently `0.5.2-beta`.
+- NBGV adds commit height (for example `0.5.2-beta.123`).
+- These builds are intentionally prerelease packages.
 
-## Publishing Stable Releases
+## Stable Release Runbook
 
-Once the secret is configured, publishing stable releases is automatic:
+1. Ensure `main` is up to date and clean:
 
-1. Create and push a version tag:
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
+```bash
+git checkout main && git pull --ff-only
+```
 
-2. The [publish workflow](../.github/workflows/publish.yml) will automatically:
-   - Build the project
-   - Pack all projects as NuGet packages
-   - Push packages to nuget.org
-   - Create a GitHub release with the packages attached
+2. Cut release branch and start next dev version:
 
-### Workflow Configuration
+```bash
+nbgv prepare-release
+git push --all
+```
 
-The publish workflow (`.github/workflows/publish.yml`) is triggered on version tags matching `v*` pattern (e.g., v1.0.0, v2.1.3).
+`nbgv prepare-release` creates a release branch (e.g. `v0.5`), removes the prerelease suffix on that branch, and bumps `main` to the next version automatically.
 
-The workflow uses:
-- **Secret**: `NUGET_APIKEY` for authentication
-- **Target**: `https://api.nuget.org/v3/index.json`
-- **Packages**: All `.nupkg` files from Release configuration
+3. Switch to the release branch, verify the version is clean (no `-beta`), and tag:
 
-## Publishing Preview Packages
+```bash
+git checkout v0.5
+nbgv get-version            # must show a stable version, e.g. 0.5.2
+git tag v0.5.2
+git push origin v0.5.2
+```
 
-Preview packages are automatically published on every push to the `main` branch:
+4. The [publish workflow](../.github/workflows/publish.yml) runs automatically and:
+   - Packs NuGet packages (version computed by NBGV from the tag).
+   - Pushes to NuGet.org.
+   - Creates a GitHub Release with auto-generated notes and packages attached.
 
-1. The [CI workflow](../.github/workflows/ci.yml) runs on every commit to `main`
-2. [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) generates preview version numbers (e.g., `0.5.2-beta.123`)
-3. Packages are built and published to:
-   - **GitHub Packages** - for easy access within GitHub
-   - **NuGet.org** - for public preview consumption
+## Notes on NBGV Configuration
 
-### Preview Version Format
+- [version.json](../version.json) defines the base version and public release refs.
+- Current `publicReleaseRefSpec` allows release branches matching `vX` or `vX.Y`.
+- If your branch strategy changes (for example `release/vX.Y`), update `publicReleaseRefSpec` accordingly.
 
-Preview versions follow the format defined in `version.json`:
-- Base version: `0.5.2-beta` (or current version)
-- Full preview version: `0.5.2-beta.{height}` where `{height}` is the git commit height
+## NuGet and Security Best Practices
 
-This allows developers and early adopters to test new features before stable releases.
+- Use scoped NuGet API keys with only required permissions.
+- Rotate API keys regularly.
+- Never store API keys in files; use GitHub Actions secrets only.
+- For manual publish commands, always target `https://api.nuget.org/v3/index.json`.
+
+## Troubleshooting
+
+- `nbgv prepare-release` fails with dirty working tree:
+  - Commit or stash changes first.
+- Tag pushed but no publish workflow:
+  - Ensure tag matches `v*` and was pushed to origin.
+- NuGet push fails in workflow:
+  - Check `NUGET_APIKEY` validity and package ownership on nuget.org.
