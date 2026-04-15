@@ -30,7 +30,14 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
       - name: Test
-        run: dotnet test --no-build --verbosity normal --configuration Release
+        run: dotnet test --no-build --verbosity normal --configuration Release --logger "trx;LogFilePrefix=test-results" --results-directory ./test-results
+      - name: Publish Test Results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Unit Tests
+          path: ./test-results/*.trx
+          reporter: dotnet-trx
       - name: Pack All Projects
         run: dotnet pack --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
       - name: Push to GitHub Packages
