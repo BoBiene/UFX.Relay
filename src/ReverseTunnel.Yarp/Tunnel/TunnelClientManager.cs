@@ -30,6 +30,20 @@ namespace ReverseTunnel.Yarp.Tunnel
 
         public TunnelClient? Tunnel => _client;
 
+        /// <summary>Exposed for test access via InternalsVisibleTo only.</summary>
+        internal TunnelConnectionState State
+        {
+            get => _state;
+            set => _state = value;
+        }
+
+        /// <summary>Exposed for test access via InternalsVisibleTo only.</summary>
+        internal TunnelClient? ActiveClient
+        {
+            get => Volatile.Read(ref _client);
+            set => Volatile.Write(ref _client, value);
+        }
+
         public TunnelClientManager(ITunnelClientOptionsStore optionsStore, IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientFactory tunnelClientFactory, ILogger<TunnelClientManager> logger)
         {
             _optionsStore = optionsStore;
@@ -238,7 +252,7 @@ namespace ReverseTunnel.Yarp.Tunnel
                 await oldClient.DisposeAsync();
         }
 
-        private void UpdateState(TunnelConnectionState newState, [CallerMemberName] string? caller = default)
+        internal void UpdateState(TunnelConnectionState newState, [CallerMemberName] string? caller = default)
         {
             if (_state != newState)
             {

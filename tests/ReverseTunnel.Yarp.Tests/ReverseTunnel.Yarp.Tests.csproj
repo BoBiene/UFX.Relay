@@ -8,12 +8,13 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <!-- Suppress VSTHRD threading analyzer warnings that don't apply to test code -->
-    <NoWarn>$(NoWarn);VSTHRD200;VSTHRD002;VSTHRD103</NoWarn>
+    <NoWarn>$(NoWarn);VSTHRD200;VSTHRD002;VSTHRD103;VSTHRD110</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="Nerdbank.Streams" Version="2.11.74" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="8.0.0" />
