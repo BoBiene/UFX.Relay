@@ -22,8 +22,13 @@ namespace ReverseTunnel.Yarp.Tunnel
         public string LastErrorResponseBody { get; private set; } = string.Empty;
         private TunnelConnectionState _state;
         private TunnelClient? _client;
-        private bool _optionsChanged = false;
-        private bool _endpointChanged = false;
+        // Combined atomic flag for pending options changes.
+        // Bit 0 (OptionsChangedBit)  – any options change is pending.
+        // Bit 1 (EndpointChangedBit) – the change affects the connection endpoint/shape.
+        // Written from the event-handler thread via CAS; read+reset atomically in the loop.
+        private int _pendingOptionsChange = 0;
+        private const int OptionsChangedBit = 1;
+        private const int EndpointChangedBit = 2;
         private bool _stepdownErrorLogging = false;
         private readonly WorkerWithBackoff _reconnectWorker;
         public event EventHandler<TunnelConnectionState>? ConnectionStateChanged;
@@ -56,16 +61,28 @@ namespace ReverseTunnel.Yarp.Tunnel
 
             _optionsStore.OptionsChanged += (_, args) =>
             {
-                _optionsChanged = true;
                 // Track whether the change requires tearing down an existing connection
-                // (endpoint or identity changed), vs just updating credentials (e.g. JWT refresh)
-                if (args.OldOptions.TunnelHost != args.NewOptions.TunnelHost ||
+                // (endpoint, identity, or connection-shaping settings changed),
+                // vs just updating credentials (e.g. JWT refresh).
+                bool isEndpointChange =
+                    args.OldOptions.TunnelHost != args.NewOptions.TunnelHost ||
                     args.OldOptions.TunnelId != args.NewOptions.TunnelId ||
-                    args.OldOptions.IsEnabled != args.NewOptions.IsEnabled)
+                    args.OldOptions.IsEnabled != args.NewOptions.IsEnabled ||
+                    args.OldOptions.TunnelPathTemplate != args.NewOptions.TunnelPathTemplate ||
+                    !Equals(args.OldOptions.WebSocketOptions, args.NewOptions.WebSocketOptions);
+
+                // OR the new bits into the pending flag atomically so that:
+                // - an endpoint change is never downgraded to credentials-only by a
+                //   concurrent credentials-only update, and
+                // - an update that arrives between the loop's read and reset is not lost.
+                int addedFlags = OptionsChangedBit | (isEndpointChange ? EndpointChangedBit : 0);
+                int observed;
+                do
                 {
-                    _endpointChanged = true;
-                }
-                _logger.LogInformation("Tunnel options changed (endpoint changed: {EndpointChanged}), triggering reconnect evaluation...", _endpointChanged);
+                    observed = Volatile.Read(ref _pendingOptionsChange);
+                } while (Interlocked.CompareExchange(ref _pendingOptionsChange, observed | addedFlags, observed) != observed);
+
+                _logger.LogInformation("Tunnel options changed (endpoint changed: {EndpointChanged}), triggering reconnect evaluation...", isEndpointChange);
                 TriggerReconnect();
             };
         }
@@ -87,11 +104,11 @@ namespace ReverseTunnel.Yarp.Tunnel
         private async Task<bool> ReconnectLoopAsync(CancellationToken token)
         {
             bool doBackoff = _listenerOptions.Value.EnableReconnectBackoff;
-            if (_optionsChanged)
+            // Atomically consume both flags so no concurrent update is lost.
+            int flags = Interlocked.Exchange(ref _pendingOptionsChange, 0);
+            if ((flags & OptionsChangedBit) != 0)
             {
-                _optionsChanged = false;
-                bool endpointChanged = _endpointChanged;
-                _endpointChanged = false;
+                bool endpointChanged = (flags & EndpointChangedBit) != 0;
 
                 if (_optionsStore.Current.IsEnabled)
                 {
@@ -207,8 +224,15 @@ namespace ReverseTunnel.Yarp.Tunnel
                         }, cancellationToken);
 
                         var tunnel = new TunnelClient(websocket, stream) { Uri = uri };
+
+                        // Set _client BEFORE attaching the completion continuation.
+                        // If Completion fires synchronously or very quickly, the guard
+                        // comparison (Volatile.Read(ref _client) == tunnelRef) would
+                        // otherwise see null and incorrectly skip the Disconnected transition.
+                        await SetTunnelAsync(tunnel);
+
                         var tunnelRef = tunnel;
-                        tunnel.Completion.ContinueWith(t =>
+                        _ = tunnel.Completion.ContinueWith(t =>
                         {
                             if (t.IsFaulted)
                             {
@@ -228,8 +252,6 @@ namespace ReverseTunnel.Yarp.Tunnel
                             }
                         }, TaskScheduler.Default);
 
-                        
-                        await SetTunnelAsync(tunnel);
                         UpdateState(TunnelConnectionState.Connected);
                     }
                     else

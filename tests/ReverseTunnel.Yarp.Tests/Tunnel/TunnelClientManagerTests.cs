@@ -114,7 +114,14 @@ public class TunnelClientManagerTests : IDisposable
 
             var stateChangeTcs = new TaskCompletionSource<TunnelConnectionState>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            _manager.ConnectionStateChanged += (_, s) => stateChangeTcs.TrySetResult(s);
+            // Skip Connecting: ConnectionStateChanged fires with Connecting *before*
+            // CreateAsync() is called, so waiting for it would race the verify below.
+            // Wait for a terminal state (Error when factory returns null, or Connected).
+            _manager.ConnectionStateChanged += (_, s) =>
+            {
+                if (s != TunnelConnectionState.Connecting)
+                    stateChangeTcs.TrySetResult(s);
+            };
 
             // Act: change the tunnel host (connection-relevant change)
             _optionsStore.Update(o => o with { TunnelHost = "ws://new-host.example.com" });
@@ -221,7 +228,14 @@ public class TunnelClientManagerTests : IDisposable
 
             var stateChangeTcs = new TaskCompletionSource<TunnelConnectionState>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            _manager.ConnectionStateChanged += (_, s) => stateChangeTcs.TrySetResult(s);
+            // Skip Connecting: ConnectionStateChanged fires with Connecting *before*
+            // CreateAsync() is called, so waiting for it would race the verify below.
+            // Wait for a terminal state (Error when factory returns null, or Connected).
+            _manager.ConnectionStateChanged += (_, s) =>
+            {
+                if (s != TunnelConnectionState.Connecting)
+                    stateChangeTcs.TrySetResult(s);
+            };
 
             // Act: change the tunnel id
             _optionsStore.Update(o => o with { TunnelId = "new-tunnel-id" });
@@ -233,8 +247,39 @@ public class TunnelClientManagerTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
-    // Test 6 – Disabling the tunnel while connected MUST disconnect
+    // Test 7 – TunnelPathTemplate change while connected MUST trigger a reconnect
     // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TunnelPathTemplateChange_WhenConnected_TriggersReconnect()
+    {
+        // Arrange
+        var (fakeTunnel, serverSide) = await CreateFakeTunnelPairAsync();
+        await using (serverSide)
+        {
+            _manager.State = TunnelConnectionState.Connected;
+            _manager.ActiveClient = fakeTunnel;
+
+            await Task.Delay(50);
+            _factoryMock.Invocations.Clear();
+
+            var stateChangeTcs = new TaskCompletionSource<TunnelConnectionState>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ConnectionStateChanged += (_, s) =>
+            {
+                if (s != TunnelConnectionState.Connecting)
+                    stateChangeTcs.TrySetResult(s);
+            };
+
+            // Act: change the path template (connection-shaping change)
+            _optionsStore.Update(o => o with { TunnelPathTemplate = "/api/tunnel/{0}" });
+
+            var completed = await Task.WhenAny(stateChangeTcs.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+            Assert.Equal(stateChangeTcs.Task, completed);
+            _factoryMock.Verify(f => f.CreateAsync(), Times.AtLeastOnce,
+                "A TunnelPathTemplate change while Connected must trigger a new connection attempt.");
+        }
+    }
 
     [Fact]
     public async Task DisableTunnel_WhenConnected_Disconnects()
