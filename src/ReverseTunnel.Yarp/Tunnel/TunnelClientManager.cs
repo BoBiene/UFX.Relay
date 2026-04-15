@@ -23,6 +23,7 @@ namespace ReverseTunnel.Yarp.Tunnel
         private TunnelConnectionState _state;
         private TunnelClient? _client;
         private bool _optionsChanged = false;
+        private bool _endpointChanged = false;
         private bool _stepdownErrorLogging = false;
         private readonly WorkerWithBackoff _reconnectWorker;
         public event EventHandler<TunnelConnectionState>? ConnectionStateChanged;
@@ -39,10 +40,18 @@ namespace ReverseTunnel.Yarp.Tunnel
             _state = TunnelConnectionState.Disconnected;
             _reconnectWorker = new(listenerOptions.Value.ReconnectInterval, listenerOptions.Value.MaxReconnectInterval, ReconnectLoopAsync);
 
-            _optionsStore.OptionsChanged += (_, _) =>
+            _optionsStore.OptionsChanged += (_, args) =>
             {
                 _optionsChanged = true;
-                _logger.LogInformation("options has changed, trigger a reconnect...");
+                // Track whether the change requires tearing down an existing connection
+                // (endpoint or identity changed), vs just updating credentials (e.g. JWT refresh)
+                if (args.OldOptions.TunnelHost != args.NewOptions.TunnelHost ||
+                    args.OldOptions.TunnelId != args.NewOptions.TunnelId ||
+                    args.OldOptions.IsEnabled != args.NewOptions.IsEnabled)
+                {
+                    _endpointChanged = true;
+                }
+                _logger.LogInformation("Tunnel options changed (endpoint changed: {EndpointChanged}), triggering reconnect evaluation...", _endpointChanged);
                 TriggerReconnect();
             };
         }
@@ -67,9 +76,23 @@ namespace ReverseTunnel.Yarp.Tunnel
             if (_optionsChanged)
             {
                 _optionsChanged = false;
+                bool endpointChanged = _endpointChanged;
+                _endpointChanged = false;
+
                 if (_optionsStore.Current.IsEnabled)
                 {
-                    await ConnectInternalAsync(token);
+                    if (_state == TunnelConnectionState.Connected && !endpointChanged)
+                    {
+                        // Only credentials (e.g. JWT) were updated while already connected.
+                        // No need to tear down the working connection - updated headers
+                        // will be used automatically on the next reconnect after a genuine disconnect.
+                        _logger.LogDebug("Options updated (credentials refresh) while already connected - keeping existing connection");
+                        doBackoff = false;
+                    }
+                    else
+                    {
+                        await ConnectInternalAsync(token);
+                    }
                 }
                 else
                 {
@@ -170,17 +193,25 @@ namespace ReverseTunnel.Yarp.Tunnel
                         }, cancellationToken);
 
                         var tunnel = new TunnelClient(websocket, stream) { Uri = uri };
+                        var tunnelRef = tunnel;
                         tunnel.Completion.ContinueWith(t =>
                         {
                             if (t.IsFaulted)
                             {
                                 _logger.LogDebug(t.Exception, "Tunnel stream ended with error");
                             }
-                            // State change to Disconnected triggers ConnectionStateChanged event.
-                            // Consumers can then refresh credentials
-                            // and call ITunnelClientOptionsStore.Update(), which fires OptionsChanged
-                            // and automatically triggers a reconnect with the new credentials.
-                            UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
+                            // Only set Disconnected if this tunnel is still the active one.
+                            // When a new connection replaces this one (e.g. during reconnect
+                            // with changed endpoint), the old tunnel's completion must not
+                            // affect the new connection's state.
+                            if (Volatile.Read(ref _client) == tunnelRef)
+                            {
+                                UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
+                            }
+                            else
+                            {
+                                _logger.LogDebug("Replaced tunnel completed - ignoring state change (a newer tunnel is active)");
+                            }
                         }, TaskScheduler.Default);
 
                         
