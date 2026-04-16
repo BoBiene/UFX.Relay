@@ -8,6 +8,7 @@ on:
     branches: [ "main" ]
     paths:
       - "src/**"
+      - "tests/**"
       - "samples/**"
       - ".github/workflows/ci.yml"
       - "Directory.Build.props"
@@ -20,6 +21,7 @@ on:
     branches: [ "main" ]
     paths:
       - "src/**"
+      - "tests/**"
       - "samples/**"
       - ".github/workflows/ci.yml"
       - "Directory.Build.props"

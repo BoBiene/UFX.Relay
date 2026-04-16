@@ -22,12 +22,32 @@ namespace ReverseTunnel.Yarp.Tunnel
         public string LastErrorResponseBody { get; private set; } = string.Empty;
         private TunnelConnectionState _state;
         private TunnelClient? _client;
-        private bool _optionsChanged = false;
+        // Combined atomic flag for pending options changes.
+        // Bit 0 (OptionsChangedBit)  – any options change is pending.
+        // Bit 1 (EndpointChangedBit) – the change affects the connection endpoint/shape.
+        // Written from the event-handler thread via CAS; read+reset atomically in the loop.
+        private int _pendingOptionsChange = 0;
+        private const int OptionsChangedBit = 1;
+        private const int EndpointChangedBit = 2;
         private bool _stepdownErrorLogging = false;
         private readonly WorkerWithBackoff _reconnectWorker;
         public event EventHandler<TunnelConnectionState>? ConnectionStateChanged;
 
         public TunnelClient? Tunnel => _client;
+
+        /// <summary>Exposed for test access via InternalsVisibleTo only.</summary>
+        internal TunnelConnectionState State
+        {
+            get => _state;
+            set => _state = value;
+        }
+
+        /// <summary>Exposed for test access via InternalsVisibleTo only.</summary>
+        internal TunnelClient? ActiveClient
+        {
+            get => Volatile.Read(ref _client);
+            set => Volatile.Write(ref _client, value);
+        }
 
         public TunnelClientManager(ITunnelClientOptionsStore optionsStore, IOptions<TunnelListenerOptions> listenerOptions, ITunnelClientFactory tunnelClientFactory, ILogger<TunnelClientManager> logger)
         {
@@ -39,10 +59,30 @@ namespace ReverseTunnel.Yarp.Tunnel
             _state = TunnelConnectionState.Disconnected;
             _reconnectWorker = new(listenerOptions.Value.ReconnectInterval, listenerOptions.Value.MaxReconnectInterval, ReconnectLoopAsync);
 
-            _optionsStore.OptionsChanged += (_, _) =>
+            _optionsStore.OptionsChanged += (_, args) =>
             {
-                _optionsChanged = true;
-                _logger.LogInformation("options has changed, trigger a reconnect...");
+                // Track whether the change requires tearing down an existing connection
+                // (endpoint, identity, or connection-shaping settings changed),
+                // vs just updating credentials (e.g. JWT refresh).
+                bool isEndpointChange =
+                    args.OldOptions.TunnelHost != args.NewOptions.TunnelHost ||
+                    args.OldOptions.TunnelId != args.NewOptions.TunnelId ||
+                    args.OldOptions.IsEnabled != args.NewOptions.IsEnabled ||
+                    args.OldOptions.TunnelPathTemplate != args.NewOptions.TunnelPathTemplate ||
+                    !Equals(args.OldOptions.WebSocketOptions, args.NewOptions.WebSocketOptions);
+
+                // OR the new bits into the pending flag atomically so that:
+                // - an endpoint change is never downgraded to credentials-only by a
+                //   concurrent credentials-only update, and
+                // - an update that arrives between the loop's read and reset is not lost.
+                int addedFlags = OptionsChangedBit | (isEndpointChange ? EndpointChangedBit : 0);
+                int observed;
+                do
+                {
+                    observed = Volatile.Read(ref _pendingOptionsChange);
+                } while (Interlocked.CompareExchange(ref _pendingOptionsChange, observed | addedFlags, observed) != observed);
+
+                _logger.LogInformation("Tunnel options changed (endpoint changed: {EndpointChanged}), triggering reconnect evaluation...", isEndpointChange);
                 TriggerReconnect();
             };
         }
@@ -64,12 +104,26 @@ namespace ReverseTunnel.Yarp.Tunnel
         private async Task<bool> ReconnectLoopAsync(CancellationToken token)
         {
             bool doBackoff = _listenerOptions.Value.EnableReconnectBackoff;
-            if (_optionsChanged)
+            // Atomically consume both flags so no concurrent update is lost.
+            int flags = Interlocked.Exchange(ref _pendingOptionsChange, 0);
+            if ((flags & OptionsChangedBit) != 0)
             {
-                _optionsChanged = false;
+                bool endpointChanged = (flags & EndpointChangedBit) != 0;
+
                 if (_optionsStore.Current.IsEnabled)
                 {
-                    await ConnectInternalAsync(token);
+                    if (_state == TunnelConnectionState.Connected && !endpointChanged)
+                    {
+                        // Only credentials (e.g. JWT) were updated while already connected.
+                        // No need to tear down the working connection - updated headers
+                        // will be used automatically on the next reconnect after a genuine disconnect.
+                        _logger.LogDebug("Options updated (credentials refresh) while already connected - keeping existing connection");
+                        doBackoff = false;
+                    }
+                    else
+                    {
+                        await ConnectInternalAsync(token);
+                    }
                 }
                 else
                 {
@@ -170,21 +224,34 @@ namespace ReverseTunnel.Yarp.Tunnel
                         }, cancellationToken);
 
                         var tunnel = new TunnelClient(websocket, stream) { Uri = uri };
-                        tunnel.Completion.ContinueWith(t =>
+
+                        // Set _client BEFORE attaching the completion continuation.
+                        // If Completion fires synchronously or very quickly, the guard
+                        // comparison (Volatile.Read(ref _client) == tunnelRef) would
+                        // otherwise see null and incorrectly skip the Disconnected transition.
+                        await SetTunnelAsync(tunnel);
+
+                        var tunnelRef = tunnel;
+                        _ = tunnel.Completion.ContinueWith(t =>
                         {
                             if (t.IsFaulted)
                             {
                                 _logger.LogDebug(t.Exception, "Tunnel stream ended with error");
                             }
-                            // State change to Disconnected triggers ConnectionStateChanged event.
-                            // Consumers can then refresh credentials
-                            // and call ITunnelClientOptionsStore.Update(), which fires OptionsChanged
-                            // and automatically triggers a reconnect with the new credentials.
-                            UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
+                            // Only set Disconnected if this tunnel is still the active one.
+                            // When a new connection replaces this one (e.g. during reconnect
+                            // with changed endpoint), the old tunnel's completion must not
+                            // affect the new connection's state.
+                            if (Volatile.Read(ref _client) == tunnelRef)
+                            {
+                                UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
+                            }
+                            else
+                            {
+                                _logger.LogDebug("Replaced tunnel completed - ignoring state change (a newer tunnel is active)");
+                            }
                         }, TaskScheduler.Default);
 
-                        
-                        await SetTunnelAsync(tunnel);
                         UpdateState(TunnelConnectionState.Connected);
                     }
                     else
@@ -207,7 +274,7 @@ namespace ReverseTunnel.Yarp.Tunnel
                 await oldClient.DisposeAsync();
         }
 
-        private void UpdateState(TunnelConnectionState newState, [CallerMemberName] string? caller = default)
+        internal void UpdateState(TunnelConnectionState newState, [CallerMemberName] string? caller = default)
         {
             if (_state != newState)
             {
