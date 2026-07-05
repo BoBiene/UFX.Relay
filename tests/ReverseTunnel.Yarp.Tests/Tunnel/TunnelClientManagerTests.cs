@@ -5,6 +5,7 @@ using Nerdbank.Streams;
 using ReverseTunnel.Yarp.Abstractions;
 using ReverseTunnel.Yarp.Tunnel;
 using ReverseTunnel.Yarp.Tunnel.Listener;
+using ReverseTunnel.Yarp.Tunnel.Transport;
 using System.Net.WebSockets;
 using System.Threading;
 
@@ -64,6 +65,50 @@ public class TunnelClientManagerTests : IDisposable
     // Test 1 – Main regression: credentials-only update while connected must NOT reconnect
     // -------------------------------------------------------------------------
 
+    [Theory]
+    [InlineData(TunnelTransportKind.WebSocket, "ws://test.example.com")]
+    [InlineData(TunnelTransportKind.Grpc, "https://test.example.com")]
+    public async Task CredentialsOnlyUpdate_WhenConnected_DoesNotReconnectTransport(TunnelTransportKind transportKind, string tunnelHost)
+    {
+        var optionsStore = new TunnelClientOptionsStore(new TunnelClientOptions
+        {
+            TunnelId = "test-id",
+            TunnelHost = tunnelHost,
+            Transport = transportKind,
+            IsEnabled = true
+        });
+        var transport = new CountingTunnelClientTransport(transportKind);
+        using var manager = new TunnelClientManager(
+            optionsStore,
+            Options.Create(new TunnelListenerOptions
+            {
+                ReconnectInterval = TimeSpan.FromMilliseconds(5),
+                MaxReconnectInterval = TimeSpan.FromMilliseconds(25),
+                EnableReconnectBackoff = false
+            }),
+            transport,
+            NullLogger<TunnelClientManager>.Instance);
+
+        var (fakeTunnel, serverSide) = await CreateFakeTunnelPairAsync();
+        await using (serverSide)
+        {
+            manager.State = TunnelConnectionState.Connected;
+            manager.ActiveClient = fakeTunnel;
+
+            await Task.Delay(50);
+            transport.Reset();
+
+            optionsStore.Update(o => o with
+            {
+                RequestHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer new-token" }
+            });
+
+            await Task.Delay(200);
+
+            Assert.Equal(0, transport.ConnectCount);
+            Assert.Equal(TunnelConnectionState.Connected, manager.State);
+        }
+    }
     [Fact]
     public async Task CredentialsOnlyUpdate_WhenConnected_DoesNotCallFactory()
     {
@@ -314,6 +359,24 @@ public class TunnelClientManagerTests : IDisposable
     // Helpers
     // -------------------------------------------------------------------------
 
+    private sealed class CountingTunnelClientTransport(TunnelTransportKind kind) : ITunnelClientTransport
+    {
+        private int connectCount;
+
+        public TunnelTransportKind Kind { get; } = kind;
+
+        public int ConnectCount => Volatile.Read(ref connectCount);
+
+        public ValueTask<TunnelTransportConnection?> ConnectAsync(
+            TunnelClientTransportContext context,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref connectCount);
+            return ValueTask.FromResult<TunnelTransportConnection?>(null);
+        }
+
+        public void Reset() => Interlocked.Exchange(ref connectCount, 0);
+    }
     /// <summary>
     /// Creates a pair of in-memory connected <see cref="TunnelClient"/> / server-side stream
     /// using <see cref="FullDuplexStream.CreatePair"/> – no real network required.
@@ -331,7 +394,7 @@ public class TunnelClientManagerTests : IDisposable
 
         await Task.WhenAll(clientMxTask, serverMxTask);
 
-        var tunnel = new TunnelClient(new ClientWebSocket(), clientMxTask.Result)
+        var tunnel = new TunnelClient(new TunnelTransportConnection(clientStream), clientMxTask.Result)
         {
             Uri = new Uri("ws://test.example.com/tunnel/test-id")
         };

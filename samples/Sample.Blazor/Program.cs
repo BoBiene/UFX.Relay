@@ -1,8 +1,11 @@
-﻿using Microsoft.AspNetCore.HttpOverrides;
-using Sample.Blazor.Components;
-using Sample.Blazor.Gateway;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;
+using ReverseTunnel.Yarp.Grpc;
 using ReverseTunnel.Yarp.Tunnel;
 using ReverseTunnel.Yarp.Tunnel.Listener;
+using ReverseTunnel.Yarp.Tunnel.Transport;
+using Sample.Blazor.Components;
+using Sample.Blazor.Gateway;
 using Yarp.ReverseProxy.Forwarder;
 
 namespace Sample.Blazor
@@ -11,23 +14,16 @@ namespace Sample.Blazor
     {
         public static async Task Main(string[] args)
         {
-            Console.WriteLine(@"
-
-██████╗  █████╗ ██╗     ███████╗ ██████╗ ██████╗ 
-██╔══██╗██╔══██╗██║     ╚══███╔╝██╔═══██╗██╔══██╗
-██████╔╝███████║██║       ███╔╝ ██║   ██║██████╔╝
-██╔══██╗██╔══██║██║      ███╔╝  ██║   ██║██╔══██╗
-██████╔╝██║  ██║███████╗███████╗╚██████╔╝██║  ██║
-╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝
-                                                                                                  
-                                                 
-   ReverseTunnel.Yarp Sample Blazor Client gestartet
-");
-
+            Console.WriteLine("ReverseTunnel.Yarp Sample Blazor Client started");
 
             var builder = WebApplication.CreateBuilder(args);
+            if (builder.Environment.IsEnvironment("Grpc"))
+            {
+                builder.WebHost.UseStaticWebAssets();
+            }
+            var tunnelSection = builder.Configuration.GetSection("ReverseTunnel");
+            var tunnelTransport = GetTransport(tunnelSection["Transport"]);
 
-            // Add services to the container.
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
 
@@ -52,37 +48,38 @@ namespace Sample.Blazor
                 ActivityTimeout = TimeSpan.FromMinutes(2)
             });
 
-            builder.WebHost.AddTunnelListener(includeDefaultUrls: true);
+            builder.WebHost.AddTunnelListener(options =>
+                tunnelSection.GetSection("Listener").Bind(options),
+                includeDefaultUrls: true);
             builder.Services.AddTunnelClient(options =>
                 options with
                 {
-                    TunnelHost = "wss://localhost:7200",
-                    TunnelId = "BlazorSample",
-                    IsEnabled = false
+                    TunnelHost = tunnelSection["TunnelHost"] ?? "wss://localhost:7200",
+                    TunnelId = tunnelSection["TunnelId"] ?? "BlazorSample",
+                    TunnelPathTemplate = tunnelSection["TunnelPathTemplate"] ?? options.TunnelPathTemplate,
+                    Transport = tunnelTransport,
+                    IsEnabled = tunnelSection.GetValue<bool?>("IsEnabled") ?? false,
+                    RequestHeaders = tunnelSection.GetSection("RequestHeaders")
+                        .GetChildren()
+                        .ToDictionary(header => header.Key, header => header.Value ?? string.Empty)
                 });
+            builder.Services.AddReverseTunnelGrpcTransport(options =>
+                builder.Configuration.GetSection("ReverseTunnel:Grpc").Bind(options));
 
             var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment())
             {
                 app.UseExceptionHandler("/Error");
-                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
             }
 
-            // !-- IMPORTANT: This must be done to ensure that the app works behind our reverse proxy (tunnel) --
-            // Enable Forwarded Headers for reverse proxy scenarios
             app.UseForwardedHeaders(new ForwardedHeadersOptions
             {
-                ForwardedHeaders = ForwardedHeaders.All,
-                // Optional:
-                // Add KnownProxies / KnownNetworks for more secure forwarding
+                ForwardedHeaders = ForwardedHeaders.All
             });
 
-
             app.UseHttpsRedirection();
-
             app.UseStaticFiles();
             app.UseAntiforgery();
 
@@ -91,7 +88,12 @@ namespace Sample.Blazor
 
             app.MapGet("/gateway/routes", (GatewayRouteStore store) => Results.Ok(store.GetAll()));
 
-            app.Map("/gateway/{**catch-all}", async (HttpContext context, GatewayRouteStore store, IHttpForwarder forwarder, HttpMessageInvoker httpClient, ForwarderRequestConfig requestConfig) =>
+            app.Map("/gateway/{**catch-all}", async (
+                HttpContext context,
+                GatewayRouteStore store,
+                IHttpForwarder forwarder,
+                HttpMessageInvoker httpClient,
+                ForwarderRequestConfig requestConfig) =>
             {
                 var gatewayPrefix = "/gateway";
                 var requestPath = context.Request.Path.Value ?? "/";
@@ -106,10 +108,8 @@ namespace Sample.Blazor
                     return;
                 }
 
-                var destinationPrefix = route.DestinationBaseUrl.TrimEnd('/'); // e.g. "http://localhost:5600"
-
+                var destinationPrefix = route.DestinationBaseUrl.TrimEnd('/');
                 var transformer = new PathOverrideTransformer(rewrittenPath);
-
                 var error = await forwarder.SendAsync(context, destinationPrefix, httpClient, requestConfig, transformer);
 
                 if (error == ForwarderError.None)
@@ -123,10 +123,14 @@ namespace Sample.Blazor
                 await Console.Error.WriteLineAsync($"Proxy error (CorrelationId: {correlationId}): {error}. Exception: {errorException}");
                 context.Response.StatusCode = StatusCodes.Status502BadGateway;
                 await context.Response.WriteAsync($"Proxy error. Please contact support with CorrelationId: {correlationId}.");
-
-                await app.RunAsync();
-
             });
+
+            await app.RunAsync();
         }
+
+        private static TunnelTransportKind GetTransport(string? value) =>
+            Enum.TryParse<TunnelTransportKind>(value, ignoreCase: true, out var transport)
+                ? transport
+                : TunnelTransportKind.WebSocket;
     }
 }

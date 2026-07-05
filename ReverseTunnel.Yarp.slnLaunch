@@ -25,17 +25,17 @@
       {
         "Path": "samples\\Sample.Server\\Sample.Server.csproj",
         "Action": "Start",
-        "DebugTarget": "https"
+        "DebugTarget": "grpc"
       },
       {
         "Path": "samples\\Sample.Client\\Sample.Client.csproj",
         "Action": "Start",
-        "DebugTarget": "https"
+        "DebugTarget": "grpc"
       },
       {
         "Path": "samples\\Sample.Blazor\\Sample.Blazor.csproj",
         "Action": "Start",
-        "DebugTarget": "https"
+        "DebugTarget": "grpc"
       }
     ]
   }

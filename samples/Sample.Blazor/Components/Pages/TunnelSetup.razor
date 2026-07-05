@@ -1,6 +1,7 @@
-﻿@page "/tunnel-setup"
+@page "/tunnel-setup"
+@implements IDisposable
 @using ReverseTunnel.Yarp.Abstractions
-@using System.Timers
+@using ReverseTunnel.Yarp.Tunnel.Transport
 
 @inject ITunnelClientOptionsStore tunnelClientOptionsStore
 @inject ITunnelClientManager tunnelClientManager
@@ -17,6 +18,16 @@
     <input class="form-control" @bind="tunnelId" />
 </div>
 
+<div class="mb-3">
+    <label class="form-label">Transport</label>
+    <select class="form-select" @bind="transport">
+        @foreach (var value in Enum.GetValues<TunnelTransportKind>())
+        {
+            <option value="@value">@value</option>
+        }
+    </select>
+</div>
+
 <div class="form-check mb-3">
     <input class="form-check-input" type="checkbox" id="enableTunnel" @bind="isEnabled" />
     <label class="form-check-label" for="enableTunnel">
@@ -28,7 +39,7 @@
 
 @if (!string.IsNullOrWhiteSpace(tunnelHost) && !string.IsNullOrWhiteSpace(tunnelId) && Uri.TryCreate(tunnelHost, UriKind.Absolute, out var tunnelHostUri))
 {
-    <a class="btn btn-outline-secondary" href="@($"{(tunnelHostUri.Scheme == "wss" ? "https" : "http")}://{tunnelHostUri.Host}:{tunnelHostUri.Port}/arty/{tunnelId}/")" target="_blank">Open Tunnel</a>
+    <a class="btn btn-outline-secondary" href="@BuildTunnelUrl(tunnelHostUri, tunnelId)" target="_blank">Open Tunnel</a>
 }
 
 <hr />
@@ -47,6 +58,7 @@
 @code {
     private string? tunnelHost;
     private string? tunnelId;
+    private TunnelTransportKind transport;
     private bool isEnabled;
     private TunnelConnectionState connectionState;
 
@@ -55,6 +67,7 @@
         var options = tunnelClientOptionsStore.Current;
         tunnelHost = options.TunnelHost;
         tunnelId = options.TunnelId;
+        transport = options.Transport;
         isEnabled = options.IsEnabled;
 
         connectionState = tunnelClientManager.ConnectionState;
@@ -74,8 +87,25 @@
             {
                 TunnelHost = tunnelHost,
                 TunnelId = tunnelId,
+                Transport = transport,
                 IsEnabled = isEnabled
             });
+    }
+
+    private static string BuildTunnelUrl(Uri tunnelHostUri, string tunnelId)
+    {
+        var scheme = tunnelHostUri.Scheme switch
+        {
+            "wss" => Uri.UriSchemeHttps,
+            "ws" => Uri.UriSchemeHttp,
+            _ => tunnelHostUri.Scheme
+        };
+
+        return new UriBuilder(tunnelHostUri)
+        {
+            Scheme = scheme,
+            Path = $"arty/{Uri.EscapeDataString(tunnelId)}/"
+        }.Uri.ToString();
     }
 
     public void Dispose()

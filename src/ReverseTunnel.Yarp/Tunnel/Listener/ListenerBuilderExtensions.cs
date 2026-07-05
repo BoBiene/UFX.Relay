@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ReverseTunnel.Yarp.Abstractions;
+using ReverseTunnel.Yarp.Tunnel;
+using ReverseTunnel.Yarp.Tunnel.Registry;
+using ReverseTunnel.Yarp.Tunnel.Transport;
 
 namespace ReverseTunnel.Yarp.Tunnel.Listener;
 
@@ -39,7 +42,13 @@ public static class ListenerBuilderExtensions
             services.Configure(tunnelOptions);
 
         services.TryAddSingleton<ITunnelIdProvider, ListenerTunnelIdProvider>();
-        services.TryAddSingleton<ITunnelClientManager, TunnelClientManager>();
+        services.TryAddSingleton<ITunnelClientFactory, ClientTunnelClientFactory>();
+        services.TryAddSingleton<WebSocketTunnelClientTransport>();
+        services.TryAddSingleton<ITunnelClientTransport>(provider => provider.GetRequiredService<WebSocketTunnelClientTransport>());
+        services.TryAddTunnelClientManager();
+        services.TryAddSingleton<ITunnelRegistry, InMemoryTunnelRegistry>();
+        services.TryAddSingleton<ReverseTunnelInstanceInfo>();
+        services.AddOptions<ReverseTunnelOptions>();
         services.TryAddSingleton<SocketTransportFactory>();
         services.TryAddSingleton<TunnelConnectionListenerFactory>();
         services.AddSingleton<IConnectionListenerFactory, TunnelCompositeTransportFactory>();

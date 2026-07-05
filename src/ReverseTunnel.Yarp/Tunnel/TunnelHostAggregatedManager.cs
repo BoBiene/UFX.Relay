@@ -1,66 +1,60 @@
-﻿
-using Microsoft.Extensions.Logging;
 using Nerdbank.Streams;
-using System.Net.WebSockets;
 using ReverseTunnel.Yarp.Abstractions;
+using ReverseTunnel.Yarp.Tunnel.Transport;
 
 namespace ReverseTunnel.Yarp.Tunnel
 {
     public class TunnelHostAggregatedManager : TunnelHostManager
     {
         private readonly ILogger<TunnelHostAggregatedManager> logger;
-        private readonly ITunnelClientFactory tunnelClientFactory;
+        private readonly ITunnelClientOptionsStore optionsStore;
+        private readonly ITunnelClientTransport clientTransport;
         private readonly ITunnelCollectionProvider tunnelCollectionProvider;
 
         public TunnelHostAggregatedManager(
+            ILogger<TunnelHostManager> baseLogger,
             ILogger<TunnelHostAggregatedManager> logger,
             ITunnelCollectionProvider tunnelCollectionProvider,
-            ITunnelClientFactory tunnelClientFactory)
-            : base(logger, tunnelCollectionProvider)
+            ITunnelClientOptionsStore optionsStore,
+            ITunnelClientTransport clientTransport)
+            : base(baseLogger, tunnelCollectionProvider)
         {
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
             this.tunnelCollectionProvider = tunnelCollectionProvider ?? throw new ArgumentNullException(nameof(tunnelCollectionProvider));
-            this.tunnelClientFactory = tunnelClientFactory ?? throw new ArgumentNullException(nameof(tunnelClientFactory));
+            this.optionsStore = optionsStore ?? throw new ArgumentNullException(nameof(optionsStore));
+            this.clientTransport = clientTransport ?? throw new ArgumentNullException(nameof(clientTransport));
         }
 
         public override async Task<Tunnel?> GetOrCreateTunnelAsync(HttpContext context, string tunnelId, CancellationToken cancellationToken = default)
         {
-            var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken);
+            var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken).ConfigureAwait(false);
             if (tunnels.TryGetTunnel(tunnelId, out var existingTunnel)) return existingTunnel;
-            if (tunnelClientFactory == null) return null;
-            var websocket = await tunnelClientFactory.CreateAsync();
-            if (websocket == null) return null;
-            var uri = await tunnelClientFactory.GetUriAsync();
-            bool connected = false;
-            while (!connected)
+
+            TunnelTransportConnection? connection = null;
+            while (connection is null)
             {
                 try
                 {
-                    await websocket.ConnectAsync(uri, cancellationToken).ConfigureAwait(false);
-                    connected = true;
+                    connection = await clientTransport.ConnectAsync(
+                        new TunnelClientTransportContext(optionsStore.Current, tunnelId),
+                        cancellationToken).ConfigureAwait(false);
                 }
-                catch (TaskCanceledException)
+                catch (TunnelTransportException ex)
                 {
-                    websocket.Dispose();
-                    return null;
-                }
-                catch (WebSocketException ex)
-                {
-                    logger.LogDebug(ex, "Websocket Error: {Uri}, {Message}", uri, ex.Message);
+                    logger.LogDebug(ex, "Tunnel transport error: {Uri}, {Message}", ex.Uri, ex.Message);
                     await Task.Delay(5000, cancellationToken).ConfigureAwait(false);
-                    websocket = await tunnelClientFactory.CreateAsync() ?? throw new NullReferenceException("Websocket is null");
                 }
             }
-            logger.LogInformation("Connected to {Uri}", uri);
-            var stream = await MultiplexingStream.CreateAsync(websocket.AsStream(), new MultiplexingStream.Options
+
+            logger.LogInformation("Connected to {Uri}", connection.Uri);
+            var stream = await MultiplexingStream.CreateAsync(connection.Stream, new MultiplexingStream.Options
             {
                 ProtocolMajorVersion = 3
-            }, cancellationToken);
-            var tunnel = new TunnelClient(websocket, stream) { Uri = uri };
-            //TODO: Reconnect websocket if closed after initial connection if tunnel has not been disposed
+            }, cancellationToken).ConfigureAwait(false);
+            var tunnel = new TunnelClient(connection, stream) { Uri = connection.Uri };
             tunnel.Completion.ContinueWith(_ =>
             {
-                logger.LogDebug("Removing tunnel {TunnelId}, uri: {Uri}", tunnelId, uri);
+                logger.LogDebug("Removing tunnel {TunnelId}, uri: {Uri}", tunnelId, connection.Uri);
                 return tunnels.TryRemoveTunnel((tunnelId, tunnel));
             }, TaskScheduler.Default);
             return tunnels.GetOrAdd(tunnelId, tunnel);

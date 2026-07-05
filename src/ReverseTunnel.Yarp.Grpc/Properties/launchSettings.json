@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "ReverseTunnel.Yarp.Grpc": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:53201;http://localhost:53202"
+    }
+  }
+}

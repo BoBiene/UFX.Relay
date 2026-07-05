@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using System.Diagnostics.CodeAnalysis;
 using ReverseTunnel.Yarp.Abstractions;
+using ReverseTunnel.Yarp.Tunnel.Registry;
+using ReverseTunnel.Yarp.Tunnel.Transport;
 using Yarp.ReverseProxy.Transforms;
 
 namespace ReverseTunnel.Yarp.Tunnel;
@@ -31,7 +33,12 @@ public static class TunnelBuilderExtensions
     private static IServiceCollection AddTunnelClientInternal(this IServiceCollection services)
     {
         services.TryAddSingleton<ITunnelClientFactory, ClientTunnelClientFactory>();
-        services.TryAddSingleton<ITunnelClientManager, TunnelClientManager>();
+        services.TryAddSingleton<WebSocketTunnelClientTransport>();
+        services.TryAddSingleton<ITunnelClientTransport>(provider => provider.GetRequiredService<WebSocketTunnelClientTransport>());
+        services.TryAddTunnelClientManager();
+        services.TryAddSingleton<ITunnelRegistry, InMemoryTunnelRegistry>();
+        services.TryAddSingleton<ReverseTunnelInstanceInfo>();
+        services.AddOptions<ReverseTunnelOptions>();
 
         return services;
     }
@@ -46,8 +53,8 @@ public static class TunnelBuilderExtensions
         app.UseWebSockets(options);
         return endpoints.MapGet(path, static async (HttpContext context, string tunnelId, ITunnelHostManager tunnelManager) =>
         {
-            if (!context.WebSockets.IsWebSocketRequest) return Results.BadRequest();
             await tunnelManager.StartTunnelAsync(context, tunnelId);
+            if (context.Response.StatusCode == StatusCodes.Status400BadRequest) return Results.BadRequest();
             return Results.Empty;
         }).ExcludeFromDescription();
     }

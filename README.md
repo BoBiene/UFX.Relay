@@ -36,6 +36,11 @@ ReverseTunnel.Yarp comprises three main components:
 - **Listener** - Receives requests over the tunnel and injects them into the ASP.NET Core pipeline
 - **Tunnel** - A logical layer on top of a WebSocket connection that multiplexes multiple requests
 
+
+### Transports and replica sets
+
+WebSocket remains the default tunnel transport. An optional gRPC transport and the replica-set owner-forwarding model are documented in [Transports and replica sets](docs/transports-and-replicas.md).
+
 ## Quick Start
 
 ### Installation
@@ -144,7 +149,7 @@ app.Run();
 
 ## Sample Projects
 
-The sample [Client](samples/Sample.Client/Program.cs) and [Server](samples/Sample.Server/Program.cs) projects demonstrate how to use ReverseTunnel.Yarp to connect a cloud application to an on-premise application with simple association using a TunnelId.
+The sample [Client](samples/Sample.Client/Program.cs) and [Server](samples/Sample.Server/Program.cs) projects demonstrate how to use ReverseTunnel.Yarp to connect a cloud application to an on-premise application with simple association using a TunnelId. They can run with the default WebSocket transport or the optional gRPC transport; see [Samples](samples/README.md).
 
 Once the sample projects have started, requests to `https://localhost:7200/` will be forwarded to the client application:
 

@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ReverseTunnel.Yarp\ReverseTunnel.Yarp.csproj" />
+    <ProjectReference Include="..\..\src\ReverseTunnel.Yarp.Grpc\ReverseTunnel.Yarp.Grpc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

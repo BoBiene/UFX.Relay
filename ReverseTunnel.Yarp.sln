@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.35906.104
+# Visual Studio Version 18
+VisualStudioVersion = 18.8.11912.234 insiders
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReverseTunnel.Yarp", "src\ReverseTunnel.Yarp\ReverseTunnel.Yarp.csproj", "{0F17BEA7-9BE1-4B6E-A49E-C46D27667128}"
 EndProject
@@ -47,6 +47,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReverseTunnel.Yarp.Tests", "tests\ReverseTunnel.Yarp.Tests\ReverseTunnel.Yarp.Tests.csproj", "{0E42E1D5-5BF1-408A-A7FE-1D6DD6F30E19}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReverseTunnel.Yarp.Grpc", "src\ReverseTunnel.Yarp.Grpc\ReverseTunnel.Yarp.Grpc.csproj", "{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -190,11 +192,24 @@ Global
 		{0E42E1D5-5BF1-408A-A7FE-1D6DD6F30E19}.Release|x64.Build.0 = Release|Any CPU
 		{0E42E1D5-5BF1-408A-A7FE-1D6DD6F30E19}.Release|x86.ActiveCfg = Release|Any CPU
 		{0E42E1D5-5BF1-408A-A7FE-1D6DD6F30E19}.Release|x86.Build.0 = Release|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Debug|x64.Build.0 = Debug|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Debug|x86.Build.0 = Debug|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Release|x64.ActiveCfg = Release|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Release|x64.Build.0 = Release|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Release|x86.ActiveCfg = Release|Any CPU
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{0F17BEA7-9BE1-4B6E-A49E-C46D27667128} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{303F63AD-4FD9-4054-8DC8-0D411E2130A7} = {FDE577E6-572F-44FE-BF55-5B6AC8EDBB5B}
 		{6D5E932E-0DA2-4551-97EA-C9D8339CBFD7} = {FDE577E6-572F-44FE-BF55-5B6AC8EDBB5B}
 		{39C55B23-E79F-4407-82A9-A4210ECA8B0E} = {FDE577E6-572F-44FE-BF55-5B6AC8EDBB5B}
@@ -207,6 +222,7 @@ Global
 		{2126A733-7CE3-407C-9552-6B47D50EA904} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{D777DD87-522B-4FCD-A50C-26C03D82B969} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{0E42E1D5-5BF1-408A-A7FE-1D6DD6F30E19} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{A1759473-E5FE-4F59-8D3C-B0E068DCABA4} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {04FED86F-BEE8-4214-B9BE-14BAD57013AE}
