@@ -51,6 +51,24 @@ Then open or curl the Blazor app through the tunnel:
 curl https://localhost:7200/arty/BlazorSample/
 ```
 
+## Migration sample: WebSocket + gRPC side by side
+
+[`samples/Migration`](Migration/README.md) shows a single server offering the WebSocket and the
+gRPC tunnel transport at the same time, so a fleet can migrate one client at a time. A legacy
+WebSocket client (which does not reference the gRPC package) and a modern gRPC client connect to
+the same server simultaneously.
+
+```bash
+dotnet run --project samples/Migration/Migration.Server
+dotnet run --project samples/Migration/Migration.LegacyClient
+dotnet run --project samples/Migration/Migration.ModernClient
+```
+
+```bash
+curl -k https://localhost:7400/tunnel/legacy/hello   # WebSocket client
+curl -k https://localhost:7400/tunnel/modern/hello    # gRPC client
+```
+
 ## Shared gRPC channel chat sample
 
 The chat sample shows ReverseTunnel.Yarp gRPC transport next to regular gRPC services on one shared client-side `GrpcChannel`.

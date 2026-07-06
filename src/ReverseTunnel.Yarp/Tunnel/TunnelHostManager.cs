@@ -97,8 +97,18 @@ public class TunnelHostManager : ITunnelHostManager
             static state => ((ShutdownTunnelDisposer)state!).Start(),
             shutdownDisposer) ?? default;
 
-        await RegisterAsync(tunnelId, transportKind, connectionId, cancellationToken).ConfigureAwait(false);
+        var registered = await RegisterAsync(tunnelId, transportKind, connectionId, cancellationToken).ConfigureAwait(false);
         logger.LogDebug("Tunnel connected: {TunnelId} on instance {InstanceId}", tunnelId, instanceInfo.InstanceId);
+
+        // While the tunnel is alive its registry entry must stay fresh so other replicas can
+        // resolve the owning instance; without renewal the entry would expire after RegistryTtl
+        // and cross-instance forwarding would break for long-running tunnels.
+        using var renewalCts = registered
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        var renewalTask = registered
+            ? RenewRegistrationLoopAsync(tunnelId, renewalCts!.Token)
+            : Task.CompletedTask;
         try
         {
             await stream.Completion.ConfigureAwait(false);
@@ -109,11 +119,55 @@ public class TunnelHostManager : ITunnelHostManager
         }
         finally
         {
+            if (renewalCts is not null)
+            {
+                await renewalCts.CancelAsync().ConfigureAwait(false);
+            }
+
+            try
+            {
+                await renewalTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
             tunnels.TryRemoveTunnel((tunnelId, tunnel));
             await shutdownDisposer.DisposeTunnelAsync().ConfigureAwait(false);
             await tunnelRegistry.UnregisterAsync(tunnelId, instanceInfo.InstanceId, CancellationToken.None).ConfigureAwait(false);
             logger.LogDebug("Tunnel disconnected: {TunnelId} on instance {InstanceId}", tunnelId, instanceInfo.InstanceId);
         }
+    }
+
+    private async Task RenewRegistrationLoopAsync(string tunnelId, CancellationToken cancellationToken)
+    {
+        var interval = GetRenewalInterval(options.Value.RegistryTtl);
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                await tunnelRegistry.RenewAsync(tunnelId, instanceInfo.InstanceId, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Tunnel registry renewal for {TunnelId} stopped: {Message}", tunnelId, ex.Message);
+        }
+    }
+
+    private static TimeSpan GetRenewalInterval(TimeSpan ttl)
+    {
+        if (ttl <= TimeSpan.Zero)
+        {
+            return TimeSpan.FromSeconds(30);
+        }
+
+        var half = TimeSpan.FromTicks(ttl.Ticks / 2);
+        return half < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : half;
     }
 
     private sealed class ShutdownTunnelDisposer(TunnelHost tunnel)
@@ -138,7 +192,7 @@ public class TunnelHostManager : ITunnelHostManager
         }
     }
 
-    private async ValueTask RegisterAsync(
+    private async ValueTask<bool> RegisterAsync(
         string tunnelId,
         TunnelTransportKind transportKind,
         string? connectionId,
@@ -146,7 +200,7 @@ public class TunnelHostManager : ITunnelHostManager
     {
         if (instanceInfo.InternalEndpoint is null)
         {
-            return;
+            return false;
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -158,5 +212,6 @@ public class TunnelHostManager : ITunnelHostManager
             now,
             now.Add(options.Value.RegistryTtl),
             connectionId), cancellationToken).ConfigureAwait(false);
+        return true;
     }
 }

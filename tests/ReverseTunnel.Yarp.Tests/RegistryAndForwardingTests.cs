@@ -53,6 +53,61 @@ public class RegistryAndForwardingTests
     }
 
     [Fact]
+    public async Task InMemoryRegistry_RenewSlidesExpiryForwardPreservingTtl()
+    {
+        var registry = new InMemoryTunnelRegistry();
+        var now = DateTimeOffset.UtcNow;
+        // A one-minute TTL window with only five seconds left before it would expire.
+        await registry.RegisterAsync(new TunnelRegistration(
+            "tunnel-1",
+            "instance-a",
+            new Uri("https://instance-a:8080"),
+            TunnelTransportKind.WebSocket,
+            now.AddSeconds(-55),
+            now.AddSeconds(5)), CancellationToken.None);
+
+        await registry.RenewAsync("tunnel-1", "instance-a", CancellationToken.None);
+
+        var resolved = await registry.ResolveAsync("tunnel-1", CancellationToken.None);
+        Assert.NotNull(resolved);
+        // Renewal must push the expiry roughly a full TTL window (one minute) into the future.
+        Assert.True(
+            resolved.ExpiresAt > DateTimeOffset.UtcNow.AddSeconds(50),
+            $"Renew did not extend expiry; ExpiresAt was {resolved.ExpiresAt:o}.");
+    }
+
+    [Fact]
+    public async Task InMemoryRegistry_RenewIgnoresDifferentInstance()
+    {
+        var registry = new InMemoryTunnelRegistry();
+        var now = DateTimeOffset.UtcNow;
+        var expiresAt = now.AddSeconds(5);
+        await registry.RegisterAsync(new TunnelRegistration(
+            "tunnel-1",
+            "instance-a",
+            new Uri("https://instance-a:8080"),
+            TunnelTransportKind.WebSocket,
+            now.AddSeconds(-55),
+            expiresAt), CancellationToken.None);
+
+        await registry.RenewAsync("tunnel-1", "instance-b", CancellationToken.None);
+
+        var resolved = await registry.ResolveAsync("tunnel-1", CancellationToken.None);
+        Assert.NotNull(resolved);
+        Assert.Equal(expiresAt, resolved.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task InMemoryRegistry_RenewMissingEntryIsNoop()
+    {
+        var registry = new InMemoryTunnelRegistry();
+
+        await registry.RenewAsync("does-not-exist", "instance-a", CancellationToken.None);
+
+        Assert.Null(await registry.ResolveAsync("does-not-exist", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task InternalForwarder_ForwardsRequestToOwnerInstance()
     {
         var registry = new InMemoryTunnelRegistry();

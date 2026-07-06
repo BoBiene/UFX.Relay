@@ -88,6 +88,8 @@ app.Run();
 
 HTTP/2 must be enabled on the endpoint that receives gRPC tunnel connections. TLS-enabled Kestrel endpoints normally negotiate HTTP/2 automatically through ALPN; if TLS is terminated upstream and Kestrel receives clear-text HTTP/2, configure h2c explicitly on that endpoint.
 
+Both endpoints feed the same `ITunnelHostManager` and `ITunnelRegistry`, so a tunnel behaves the same regardless of transport and the forwarder resolves it the same way. This lets a fleet migrate one client at a time: keep both transports mapped, move clients from WebSocket to gRPC at your own pace, and only drop `MapTunnelHost()` once every client has moved (there is no need to rush). The end-to-end [`samples/Migration`](../samples/Migration/README.md) project demonstrates a single server serving a legacy WebSocket client and a modern gRPC client at the same time; the legacy client deliberately does not reference `ReverseTunnel.Yarp.Grpc`, proving unchanged clients keep working.
+
 ## Sample projects
 
 The basic samples support both transports. WebSocket remains the default:
@@ -137,6 +139,8 @@ Response flows back through B
 ```
 
 The built-in `InMemoryTunnelRegistry` is for single-instance mode and tests. Multi-replica deployments should provide a distributed implementation, for example Redis, using the `ITunnelRegistry` abstraction. Registrations include tunnel id, instance id, internal endpoint, transport kind, last seen, expiry time, and optional connection id.
+
+While a tunnel is connected, the owner instance renews its registration at half the configured `RegistryTtl` so a long-running tunnel never expires from the registry underneath an active connection. A distributed `ITunnelRegistry.RenewAsync` implementation must therefore slide the expiry window forward (for example a Redis `EXPIRE`/`SET ... EX`), not merely touch a last-seen field. When the tunnel closes, the owner calls `UnregisterAsync`. Set `RegistryTtl` comfortably longer than the renewal interval so a single missed renewal (for example a brief registry outage) does not drop a live tunnel.
 
 Configure each replica with a stable id and an internal endpoint reachable by other replicas:
 

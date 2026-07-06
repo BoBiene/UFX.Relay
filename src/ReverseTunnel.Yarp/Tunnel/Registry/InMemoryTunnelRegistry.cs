@@ -30,12 +30,22 @@ public sealed class InMemoryTunnelRegistry : ITunnelRegistry
 
     public ValueTask RenewAsync(string tunnelId, string instanceId, CancellationToken cancellationToken)
     {
-        registrations.AddOrUpdate(
-            tunnelId,
-            static _ => throw new KeyNotFoundException("Tunnel registration does not exist."),
-            (_, current) => current.InstanceId == instanceId
-                ? current with { LastSeen = DateTimeOffset.UtcNow }
-                : current);
+        // Renewing slides the expiry window forward while preserving the original TTL
+        // (ExpiresAt - LastSeen). A missing entry is treated as a no-op so a renewal that
+        // races an eviction does not throw; the owner will re-register on the next connect.
+        if (registrations.TryGetValue(tunnelId, out var current) && current.InstanceId == instanceId)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var ttl = current.ExpiresAt - current.LastSeen;
+            if (ttl <= TimeSpan.Zero)
+            {
+                ttl = TimeSpan.FromMinutes(2);
+            }
+
+            var renewed = current with { LastSeen = now, ExpiresAt = now.Add(ttl) };
+            registrations.TryUpdate(tunnelId, renewed, current);
+        }
+
         return ValueTask.CompletedTask;
     }
 

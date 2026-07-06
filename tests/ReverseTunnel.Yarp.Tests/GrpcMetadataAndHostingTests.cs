@@ -229,6 +229,34 @@ public class GrpcMetadataAndHostingTests
     }
 
     [Fact]
+    public async Task TunnelHost_KeepsRegistrationAliveBeyondTtlWhileConnected()
+    {
+        var collection = new TunnelCollection();
+        var registry = new InMemoryTunnelRegistry();
+        // Short TTL so the renewal loop must fire to keep the registration resolvable.
+        var ttl = TimeSpan.FromSeconds(1);
+        await using var app = await StartRealTunnelHostAsync(collection, registry, ttl);
+        var server = app.GetTestServer();
+
+        await using var webSocketTunnel = await ConnectWebSocketTunnelAsync(server, "long-lived");
+        await WaitUntilAsync(
+            () => collection.TryGetTunnel("long-lived", out _),
+            TimeSpan.FromSeconds(10),
+            () => DescribeTunnels(collection));
+
+        // Wait well past the original TTL; without renewal the entry would have expired and
+        // been evicted, breaking cross-instance forwarding for long-running tunnels.
+        await Task.Delay(TimeSpan.FromMilliseconds(2500));
+
+        var registration = await registry.ResolveAsync("long-lived", CancellationToken.None);
+        Assert.NotNull(registration);
+        Assert.Equal("test-instance", registration.InstanceId);
+        Assert.True(
+            registration.ExpiresAt > DateTimeOffset.UtcNow,
+            $"Registration expiry {registration.ExpiresAt:o} was not renewed.");
+    }
+
+    [Fact]
     public async Task ServerShutdown_CompletesGrpcTunnelPromptlyLikeWebSocket()
     {
         var collection = new TunnelCollection();
@@ -261,7 +289,8 @@ public class GrpcMetadataAndHostingTests
 
     private static async Task<WebApplication> StartRealTunnelHostAsync(
         TunnelCollection collection,
-        InMemoryTunnelRegistry registry)
+        InMemoryTunnelRegistry registry,
+        TimeSpan? registryTtl = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -273,6 +302,10 @@ public class GrpcMetadataAndHostingTests
         {
             options.InstanceId = "test-instance";
             options.InternalEndpoint = new Uri("https://test-instance.internal");
+            if (registryTtl is { } ttl)
+            {
+                options.RegistryTtl = ttl;
+            }
         });
         builder.Services.AddTunnelForwarder();
         builder.Services.AddReverseTunnelGrpcTransport();
