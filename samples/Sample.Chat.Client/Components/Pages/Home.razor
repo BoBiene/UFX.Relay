@@ -1,0 +1,182 @@
+@page "/"
+@implements IDisposable
+@inject Services.ChatClientSession Session
+@inject ReverseTunnel.Yarp.Abstractions.ITunnelClientManager TunnelManager
+
+<PageTitle>Shared gRPC Channel Chat</PageTitle>
+
+<section class="hero">
+    <div>
+        <p class="eyebrow">ReverseTunnel.Yarp gRPC sample</p>
+        <h1>Shared gRPC channel chat</h1>
+        <p class="summary">One client-side GrpcChannel is used by the tunnel transport, unary chat calls, and a second bidirectional chat stream.</p>
+    </div>
+    <div class="status-grid">
+        <div>
+            <span>Server</span>
+            <strong>@Session.ServerUrl</strong>
+        </div>
+        <div>
+            <span>Tunnel</span>
+            <strong>@tunnelState</strong>
+        </div>
+        <div>
+            <span>Chat stream</span>
+            <strong>@Session.ChatStreamStatus</strong>
+        </div>
+        <div>
+            <span>Channel</span>
+            <strong>#@Session.SharedChannelHashCode</strong>
+        </div>
+    </div>
+</section>
+
+<section class="panel usage">
+    <h2>Using shared gRPC channel for</h2>
+    <ul>
+        @foreach (var item in Session.SharedChannelUsage)
+        {
+            <li>@item</li>
+        }
+    </ul>
+</section>
+
+<section class="workspace">
+    <div class="panel controls">
+        <h2>Rooms</h2>
+        <div class="row">
+            <input placeholder="Room name" @bind="newRoomName" />
+            <button @onclick="CreateRoomAsync">Create room</button>
+        </div>
+        <button class="secondary" @onclick="RefreshRoomsAsync">Refresh rooms</button>
+        <div class="room-list">
+            @foreach (var room in Session.Rooms)
+            {
+                <button class="room @(room.RoomId == Session.CurrentRoomId ? "active" : null)" @onclick="() => SelectRoom(room.RoomId)">
+                    <strong>@room.DisplayName</strong>
+                    <span>@room.RoomId</span>
+                </button>
+            }
+        </div>
+
+        <h2>Join</h2>
+        <input placeholder="User name" @bind="userName" />
+        <button disabled="@(selectedRoomId is null)" @onclick="JoinSelectedRoomAsync">Join selected room</button>
+    </div>
+
+    <div class="panel chat">
+        <h2>Messages</h2>
+        <div class="messages">
+            @foreach (var message in Session.Messages)
+            {
+                <article>
+                    <strong>@message.UserName</strong>
+                    <p>@message.Text</p>
+                </article>
+            }
+        </div>
+        @if (Session.TypingUsers.Count > 0)
+        {
+            <p class="typing">@string.Join(", ", Session.TypingUsers) typing...</p>
+        }
+        <textarea placeholder="Message" @bind="messageText" @oninput="HandleTypingAsync"></textarea>
+        <div class="row">
+            <button disabled="@(Session.CurrentRoomId is null)" @onclick="SendUnaryAsync">Send through unary service</button>
+            <button disabled="@(!Session.IsChatStreamConnected)" @onclick="SendStreamAsync">Send through stream</button>
+        </div>
+    </div>
+
+    <div class="panel tunnel">
+        <h2>Tunnel test</h2>
+        <p>The server forwards <code>/client-info</code> through ReverseTunnel back to this client app.</p>
+        <button @onclick="TestTunnelAsync">Test request through tunnel</button>
+        @if (!string.IsNullOrWhiteSpace(Session.TunnelTestResponse))
+        {
+            <pre>@Session.TunnelTestResponse</pre>
+        }
+
+        <h2>Event log</h2>
+        <ol class="events">
+            @foreach (var item in Session.EventLog)
+            {
+                <li>@item</li>
+            }
+        </ol>
+    </div>
+</section>
+
+@code {
+    private string tunnelState = "Unknown";
+    private string newRoomName = "General chat";
+    private string userName = Environment.UserName is { Length: > 0 } name ? name : "Guest";
+    private string messageText = string.Empty;
+    private string? selectedRoomId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        tunnelState = TunnelManager.ConnectionState.ToString();
+        TunnelManager.ConnectionStateChanged += OnTunnelStateChanged;
+        Session.Changed += OnSessionChanged;
+        await Session.RefreshRoomsAsync();
+        selectedRoomId = Session.Rooms.FirstOrDefault()?.RoomId;
+    }
+
+    private async Task RefreshRoomsAsync()
+    {
+        await Session.RefreshRoomsAsync();
+        selectedRoomId ??= Session.Rooms.FirstOrDefault()?.RoomId;
+    }
+
+    private async Task CreateRoomAsync()
+    {
+        var room = await Session.CreateRoomAsync(newRoomName);
+        if (room is not null)
+        {
+            selectedRoomId = room.RoomId;
+        }
+    }
+
+    private void SelectRoom(string roomId) => selectedRoomId = roomId;
+
+    private async Task JoinSelectedRoomAsync()
+    {
+        if (selectedRoomId is not null)
+        {
+            await Session.JoinRoomAsync(selectedRoomId, userName);
+        }
+    }
+
+    private async Task SendUnaryAsync()
+    {
+        await Session.SendUnaryMessageAsync(messageText);
+        messageText = string.Empty;
+    }
+
+    private async Task SendStreamAsync()
+    {
+        await Session.SendStreamMessageAsync(messageText);
+        messageText = string.Empty;
+    }
+
+    private async Task HandleTypingAsync(ChangeEventArgs args)
+    {
+        messageText = args.Value?.ToString() ?? string.Empty;
+        await Session.SendTypingAsync(!string.IsNullOrWhiteSpace(messageText));
+    }
+
+    private Task TestTunnelAsync() => Session.TestTunnelAsync();
+
+    private void OnTunnelStateChanged(object? sender, ReverseTunnel.Yarp.Abstractions.TunnelConnectionState state)
+    {
+        tunnelState = state.ToString();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        TunnelManager.ConnectionStateChanged -= OnTunnelStateChanged;
+        Session.Changed -= OnSessionChanged;
+    }
+}

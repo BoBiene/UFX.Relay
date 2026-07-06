@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+option csharp_namespace = "Sample.Chat.Shared";
+
+package sample.chat;
+
+service ChatRoomService {
+  rpc CreateRoom(CreateRoomRequest) returns (CreateRoomResponse);
+  rpc ListRooms(ListRoomsRequest) returns (ListRoomsResponse);
+  rpc JoinRoom(JoinRoomRequest) returns (JoinRoomResponse);
+}
+
+service ChatMessageService {
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc GetRecentMessages(GetRecentMessagesRequest) returns (GetRecentMessagesResponse);
+}
+
+service ChatStreamService {
+  rpc Connect(stream ChatClientEvent) returns (stream ChatServerEvent);
+}
+
+message CreateRoomRequest {
+  string display_name = 1;
+}
+
+message CreateRoomResponse {
+  string room_id = 1;
+  string display_name = 2;
+}
+
+message ListRoomsRequest {
+}
+
+message ListRoomsResponse {
+  repeated ChatRoom rooms = 1;
+}
+
+message JoinRoomRequest {
+  string room_id = 1;
+  string user_name = 2;
+}
+
+message JoinRoomResponse {
+  string room_id = 1;
+  string user_name = 2;
+  bool accepted = 3;
+}
+
+message SendMessageRequest {
+  string room_id = 1;
+  string user_name = 2;
+  string text = 3;
+}
+
+message SendMessageResponse {
+  ChatMessage message = 1;
+}
+
+message GetRecentMessagesRequest {
+  string room_id = 1;
+  int32 count = 2;
+}
+
+message GetRecentMessagesResponse {
+  repeated ChatMessage messages = 1;
+}
+
+message ChatClientEvent {
+  oneof kind {
+    ChatClientHello hello = 1;
+    ChatClientMessage message = 2;
+    ChatClientTyping typing = 3;
+    ChatClientLeave leave = 4;
+  }
+}
+
+message ChatServerEvent {
+  oneof kind {
+    ChatServerWelcome welcome = 1;
+    ChatRoomCreated room_created = 2;
+    ChatUserJoined user_joined = 3;
+    ChatUserLeft user_left = 4;
+    ChatMessageReceived message_received = 5;
+    ChatTypingReceived typing_received = 6;
+    ChatError error = 7;
+  }
+}
+
+message ChatClientHello {
+  string room_id = 1;
+  string user_name = 2;
+}
+
+message ChatClientMessage {
+  string room_id = 1;
+  string user_name = 2;
+  string text = 3;
+}
+
+message ChatClientTyping {
+  string room_id = 1;
+  string user_name = 2;
+  bool is_typing = 3;
+}
+
+message ChatClientLeave {
+  string room_id = 1;
+  string user_name = 2;
+}
+
+message ChatServerWelcome {
+  string connection_id = 1;
+  string room_id = 2;
+  string user_name = 3;
+}
+
+message ChatRoomCreated {
+  ChatRoom room = 1;
+}
+
+message ChatUserJoined {
+  string room_id = 1;
+  string user_name = 2;
+}
+
+message ChatUserLeft {
+  string room_id = 1;
+  string user_name = 2;
+}
+
+message ChatMessageReceived {
+  ChatMessage message = 1;
+}
+
+message ChatTypingReceived {
+  string room_id = 1;
+  string user_name = 2;
+  bool is_typing = 3;
+}
+
+message ChatError {
+  string message = 1;
+}
+
+message ChatRoom {
+  string room_id = 1;
+  string display_name = 2;
+}
+
+message ChatMessage {
+  string message_id = 1;
+  string room_id = 2;
+  string user_name = 3;
+  string text = 4;
+  int64 unix_time_ms = 5;
+}

@@ -1,3 +1,4 @@
+using Grpc.Core;
 using Grpc.Net.Client;
 
 namespace ReverseTunnel.Yarp.Grpc;
@@ -5,6 +6,7 @@ namespace ReverseTunnel.Yarp.Grpc;
 public sealed class ReverseTunnelGrpcTransportOptions
 {
     public Action<GrpcChannelOptions>? ConfigureChannel { get; set; }
+    public Func<IServiceProvider, CallInvoker>? CallInvokerFactory { get; set; }
     public string ConnectionIdPrefix { get; set; } = "grpc";
     public TimeSpan ClientKeepAlivePingDelay { get; set; } = TimeSpan.FromSeconds(30);
     public TimeSpan ClientKeepAlivePingTimeout { get; set; } = TimeSpan.FromSeconds(15);

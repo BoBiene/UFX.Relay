@@ -123,6 +123,39 @@ public class GrpcMetadataAndHostingTests
     }
 
     [Fact]
+    public async Task GrpcTunnelClientTransport_UsesExternalCallInvokerAndDoesNotDisposeIt()
+    {
+        var callInvoker = new RecordingCallInvoker();
+        var services = new ServiceCollection()
+            .AddSingleton(callInvoker)
+            .BuildServiceProvider();
+        var transport = new GrpcTunnelClientTransport(
+            Options.Create(new ReverseTunnelGrpcTransportOptions
+            {
+                CallInvokerFactory = provider => provider.GetRequiredService<RecordingCallInvoker>()
+            }),
+            services);
+
+        var connection = await transport.ConnectAsync(
+            new TunnelClientTransportContext(new TunnelClientOptions
+            {
+                TunnelHost = "https://localhost:7200",
+                TunnelId = "shared-channel-tunnel",
+                Transport = TunnelTransportKind.Grpc
+            }, "shared-channel-tunnel"),
+            CancellationToken.None);
+
+        Assert.Equal(1, callInvoker.DuplexCallCount);
+        Assert.Equal("shared-channel-tunnel", callInvoker.WrittenConnect?.TunnelId);
+
+        await connection!.DisposeAsync();
+
+        Assert.True(callInvoker.RequestCompleted);
+        Assert.True(callInvoker.CallDisposed);
+        Assert.False(callInvoker.InvokerDisposed);
+    }
+
+    [Fact]
     public void AddReverseTunnelGrpcTransport_ConfiguresKestrelHttp2KeepAliveOptions()
     {
         var services = new ServiceCollection();
@@ -317,6 +350,91 @@ public class GrpcMetadataAndHostingTests
         {
             _ = completion.Exception;
         }
+    }
+
+    private sealed class RecordingCallInvoker : CallInvoker, IDisposable
+    {
+        public int DuplexCallCount { get; private set; }
+        public TunnelConnect? WrittenConnect { get; private set; }
+        public bool RequestCompleted { get; private set; }
+        public bool CallDisposed { get; private set; }
+        public bool InvokerDisposed { get; private set; }
+
+        public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            string? host,
+            CallOptions options)
+        {
+            DuplexCallCount++;
+            var requestStream = new RecordingClientStreamWriter<TRequest>(message =>
+            {
+                if (message is TunnelMessage { KindCase: TunnelMessage.KindOneofCase.Connect } tunnelMessage)
+                {
+                    WrittenConnect = tunnelMessage.Connect;
+                }
+            }, () => RequestCompleted = true);
+
+            return new AsyncDuplexStreamingCall<TRequest, TResponse>(
+                requestStream,
+                new EmptyAsyncStreamReader<TResponse>(),
+                Task.FromResult(new Metadata()),
+                static () => Status.DefaultSuccess,
+                static () => new Metadata(),
+                () => CallDisposed = true);
+        }
+
+        public override TResponse BlockingUnaryCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            string? host,
+            CallOptions options,
+            TRequest request) =>
+            throw new NotSupportedException();
+
+        public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            string? host,
+            CallOptions options,
+            TRequest request) =>
+            throw new NotSupportedException();
+
+        public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            string? host,
+            CallOptions options,
+            TRequest request) =>
+            throw new NotSupportedException();
+
+        public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            string? host,
+            CallOptions options) =>
+            throw new NotSupportedException();
+
+        public void Dispose() => InvokerDisposed = true;
+    }
+
+    private sealed class RecordingClientStreamWriter<T>(Action<T> onWrite, Action onComplete) : IClientStreamWriter<T>
+    {
+        public WriteOptions? WriteOptions { get; set; }
+
+        public Task WriteAsync(T message)
+        {
+            onWrite(message);
+            return Task.CompletedTask;
+        }
+
+        public Task CompleteAsync()
+        {
+            onComplete();
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class EmptyAsyncStreamReader<T> : IAsyncStreamReader<T>
+    {
+        public T Current => default!;
+
+        public Task<bool> MoveNext(CancellationToken cancellationToken) => Task.FromResult(false);
     }
 
     private sealed class StaticTunnelIdProvider(string tunnelId) : ITunnelIdProvider

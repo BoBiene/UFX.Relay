@@ -57,6 +57,21 @@ builder.Services.AddReverseTunnelGrpcTransport(options =>
 
 The keepalive values above are the defaults. Keep the ping delay comfortably below the shortest idle timeout in front of Kestrel, for example Azure Container Apps ingress or another cloud L7 load balancer, so long-lived idle HTTP/2 tunnel connections are kept warm. The timeout controls how long each side waits for a ping acknowledgement before treating the HTTP/2 connection as broken and allowing the client reconnect loop to run.
 
+A client that already owns a gRPC channel can let the tunnel transport reuse the same `CallInvoker` instead of creating and disposing an internal channel:
+
+```csharp
+builder.Services.AddSingleton(provider =>
+    GrpcChannel.ForAddress("https://relay.example.com"));
+
+builder.Services.AddReverseTunnelGrpcTransport(options =>
+{
+    options.CallInvokerFactory = provider =>
+        provider.GetRequiredService<GrpcChannel>().CreateCallInvoker();
+});
+```
+
+When `CallInvokerFactory` is configured, `GrpcTunnelClientTransport` does not dispose the external channel or invoker. Without the factory, the existing behavior remains: the transport creates and disposes its own `GrpcChannel`.
+
 A server can expose WebSocket and gRPC tunnels on the same process and port during migration:
 
 ```csharp
@@ -90,6 +105,23 @@ dotnet run --project samples/Sample.Client --launch-profile grpc
 ```
 
 The sample server maps both `MapTunnelHost()` and `MapReverseTunnelGrpcTransport()`, so WebSocket and gRPC tunnel clients can connect to the same server process during migration. `Sample.Blazor` also has a `grpc` launch profile and can be reached through the sample server at `/arty/BlazorSample/`.
+
+### Shared channel chat sample
+
+`Sample.Chat.Server`, `Sample.Chat.Client`, and `Sample.Chat.Shared` demonstrate a client app that reuses one `GrpcChannel` for the ReverseTunnel gRPC transport and normal chat gRPC services. The sample intentionally keeps the streams separate:
+
+- `TunnelTransport.Connect` is the long-running bidirectional ReverseTunnel transport stream.
+- `ChatStreamService.Connect` is a second bidirectional gRPC stream for chat events.
+- `ChatRoomService` and `ChatMessageService` calls are regular unary gRPC calls.
+
+All of them can use the same `GrpcChannel` / HTTP/2 connection pool when the client configures `ReverseTunnelGrpcTransportOptions.CallInvokerFactory`. Creating multiple `GrpcChannel` instances can create multiple HTTP/2/TCP connection pools. Shared channel usage is optional and does not merge chat traffic into the ReverseTunnel stream.
+
+Resilience stays layered:
+
+- the `GrpcChannel` should normally be registered as a singleton and configured with HTTP/2 keepalive and connection timeout settings;
+- the ReverseTunnel client reconnect loop owns recovery for `TunnelTransport.Connect`;
+- application-owned bidirectional streams need their own reconnect loop, because gRPC cannot transparently resume a broken stream;
+- unary calls should use deadlines. Automatic gRPC retry policy is best limited to safe/idempotent calls unless write operations carry request ids or another duplicate-detection mechanism.
 ## Replica-set mode
 
 A tunnel has exactly one owner instance. The owner is the server replica that accepted the long-running tunnel connection. Other replicas do not forward individual frames. Instead, if an HTTP request reaches a non-owner instance, that instance resolves the owner through `ITunnelRegistry` and forwards the whole HTTP request to the owner instance.
