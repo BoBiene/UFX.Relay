@@ -30,7 +30,7 @@ public sealed class WebSocketTunnelClientTransport(ITunnelClientFactory clientFa
         }
         catch (WebSocketException ex) when (ex.InnerException is HttpRequestException httpRequestException)
         {
-            var responseBody = await TryFetchErrorResponseBodyAsync(uri.AbsoluteUri).ConfigureAwait(false);
+            var responseBody = await TryFetchErrorResponseBodyAsync(uri.AbsoluteUri, cancellationToken).ConfigureAwait(false);
             webSocket.Dispose();
             throw new TunnelTransportException(
                 httpRequestException.Message,
@@ -41,7 +41,7 @@ public sealed class WebSocketTunnelClientTransport(ITunnelClientFactory clientFa
         }
         catch (WebSocketException ex)
         {
-            var responseBody = await TryFetchErrorResponseBodyAsync(uri.AbsoluteUri).ConfigureAwait(false);
+            var responseBody = await TryFetchErrorResponseBodyAsync(uri.AbsoluteUri, cancellationToken).ConfigureAwait(false);
             webSocket.Dispose();
             throw new TunnelTransportException(
                 ex.Message,
@@ -72,17 +72,24 @@ public sealed class WebSocketTunnelClientTransport(ITunnelClientFactory clientFa
             webSocket.Dispose);
     }
 
-    private async Task<string> TryFetchErrorResponseBodyAsync(string wsUrl)
+    private async Task<string> TryFetchErrorResponseBodyAsync(string wsUrl, CancellationToken cancellationToken)
     {
         try
         {
             var httpUrl = wsUrl.Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
                 .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase);
             using var httpClient = clientFactory.CreateHttpClient();
-            using var response = await httpClient.GetAsync(httpUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            // Bound this diagnostic fetch: it must never keep a superseded reconnect attempt
+            // alive. The cancellation token lets a Reset() abort it promptly, and the timeout
+            // caps it well below the default 100s when the endpoint is unreachable/black-holed.
+            if (httpClient.Timeout == Timeout.InfiniteTimeSpan || httpClient.Timeout > TimeSpan.FromSeconds(10))
+            {
+                httpClient.Timeout = TimeSpan.FromSeconds(10);
+            }
+            using var response = await httpClient.GetAsync(httpUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception)

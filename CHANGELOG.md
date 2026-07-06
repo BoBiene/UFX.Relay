@@ -30,6 +30,11 @@ This format is based on Keep a Changelog and follows Semantic Versioning princip
 - Tunnel registry renewal: the owner instance now renews its registration at half the `RegistryTtl` while a tunnel is connected, and `InMemoryTunnelRegistry.RenewAsync` slides the expiry window forward. Long-running tunnels no longer expire from the registry, which previously broke cross-instance forwarding after `RegistryTtl`.
 - `TunnelClientManager`: credentials-only options update (e.g. JWT refresh) while already connected no longer tears down and re-establishes the connection, preventing an infinite reconnect feedback loop.
 - `TunnelClientManager`: replaced tunnel's `Completion` callback now guards against the stale tunnel incorrectly resetting state to `Disconnected` after a newer tunnel has taken over.
+- `TunnelClientManager`: a credentials-only options update while **disconnected** no longer restarts the reconnect worker. Previously it reset the exponential backoff, so a repeated credentials refresh during an outage retried at the initial interval instead of backing off. Refreshed headers are still applied on the next scheduled attempt.
+- `WorkerWithBackoff`: `Reset()` now hands the outgoing worker to its replacement as a predecessor, and the replacement awaits it before running the work function. This guarantees two worker generations never execute concurrently, so a superseded connection attempt can no longer race a fresh one (which could open a second connection with the same tunnel id).
+- `TunnelClientManager`: the client `WebSocket` is now disposed on every connection path that does not hand it to a `TunnelClient` (connect failure, cancellation, or a failure during the multiplexing handshake), preventing a connected-but-unowned socket from leaking.
+- `TunnelClientManager`: `TryFetchErrorResponseBodyAsync` now honors the reconnect cancellation token and caps its HTTP timeout, so a superseded attempt cannot linger on an unreachable endpoint for the default 100s.
+- `TunnelClientManager`: a connection attempt that was cancelled because it was superseded no longer overwrites the connection state or disposes the active tunnel established by the newer attempt.
 
 ### Removed
 

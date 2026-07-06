@@ -81,6 +81,60 @@ public class WorkerWithBackoffTests
     }
 
     [Fact]
+    public async Task Worker_Reset_DoesNotRunFuncConcurrentlyWithInFlightAttempt()
+    {
+        // Regression: Reset() cancels the running worker but the replacement must not start the
+        // work function until the outgoing (possibly still in-flight) attempt has unwound, so two
+        // generations never overlap and race a duplicate connection.
+        int concurrent = 0;
+        int maxConcurrent = 0;
+        var firstEntered = new TaskCompletionSource();
+        var releaseFirst = new TaskCompletionSource();
+        var syncRoot = new object();
+
+        using var worker = new WorkerWithBackoff(
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(30),
+            async token =>
+            {
+                lock (syncRoot)
+                {
+                    concurrent++;
+                    maxConcurrent = Math.Max(maxConcurrent, concurrent);
+                }
+
+                // First invocation blocks (simulating a slow, cancellation-unaware connect attempt)
+                // until the test releases it, well after Reset() has spawned the replacement.
+                if (firstEntered.TrySetResult())
+                {
+                    await releaseFirst.Task;
+                }
+
+                lock (syncRoot)
+                {
+                    concurrent--;
+                }
+
+                return false;
+            });
+
+        // Wait until the first attempt is running, then supersede it while it is still in flight.
+        await Task.WhenAny(firstEntered.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.True(firstEntered.Task.IsCompleted, "First invocation should have started");
+
+        worker.Reset();
+
+        // Give the replacement a chance to (wrongly) start before the first attempt finishes.
+        await Task.Delay(200);
+
+        // Let the first attempt complete; the replacement may only run afterwards.
+        releaseFirst.TrySetResult();
+        await Task.Delay(200);
+
+        Assert.Equal(1, maxConcurrent);
+    }
+
+    [Fact]
     public void Worker_Dispose_CalledTwice_DoesNotThrow()
     {
         var worker = new WorkerWithBackoff(

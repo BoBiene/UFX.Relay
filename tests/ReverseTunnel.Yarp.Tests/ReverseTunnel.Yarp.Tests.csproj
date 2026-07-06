@@ -8,7 +8,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <!-- Suppress VSTHRD threading analyzer warnings that don't apply to test code -->
-    <NoWarn>$(NoWarn);VSTHRD200;VSTHRD002;VSTHRD103;VSTHRD110</NoWarn>
+    <NoWarn>$(NoWarn);VSTHRD200;VSTHRD002;VSTHRD103;VSTHRD110;VSTHRD003</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

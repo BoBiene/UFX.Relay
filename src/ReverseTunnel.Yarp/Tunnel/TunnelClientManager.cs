@@ -74,7 +74,24 @@ namespace ReverseTunnel.Yarp.Tunnel
                     args.OldOptions.Transport != args.NewOptions.Transport ||
                     !Equals(args.OldOptions.WebSocketOptions, args.NewOptions.WebSocketOptions);
 
-                int addedFlags = OptionsChangedBit | (isEndpointChange ? EndpointChangedBit : 0);
+                if (!isEndpointChange)
+                {
+                    // Credentials-only change (e.g. a JWT refresh). The connection does not need to
+                    // be touched: an established tunnel stays up and picks up the new credentials on
+                    // its next natural reconnect, and while disconnected the reconnect worker already
+                    // reads the current headers from the options store on every attempt. Resetting the
+                    // worker here would only restart the reconnect backoff and, on a repeated refresh,
+                    // race a fresh connection attempt against the in-flight one - so we deliberately
+                    // do nothing.
+                    _logger.LogDebug("Tunnel credentials changed; existing reconnect schedule and connection are kept.");
+                    return;
+                }
+
+                // OR the new bits into the pending flag atomically so that:
+                // - an endpoint change is never downgraded to credentials-only by a
+                //   concurrent credentials-only update, and
+                // - an update that arrives between the loop's read and reset is not lost.
+                int addedFlags = OptionsChangedBit | EndpointChangedBit;
                 int observed;
                 do
                 {
@@ -173,38 +190,61 @@ namespace ReverseTunnel.Yarp.Tunnel
                     return;
                 }
 
-                LastErrorResponseBody = string.Empty;
-                LastConnectErrorMessage = string.Empty;
-                LastConnectStatusCode = null;
-                _stepdownErrorLogging = false;
-                _logger.LogInformation("Connected to {Uri}", connection.Uri);
-                var stream = await MultiplexingStream.CreateAsync(connection.Stream, new MultiplexingStream.Options
+                // The transport connection is owned by this method until it is handed to a
+                // TunnelClient. On every other exit (multiplexing handshake failure or cancellation)
+                // the finally block disposes it, so a connected-but-unowned transport can never leak.
+                bool tunnelOwnsConnection = false;
+                try
                 {
-                    ProtocolMajorVersion = 3
-                }, cancellationToken).ConfigureAwait(false);
+                    LastErrorResponseBody = string.Empty;
+                    LastConnectErrorMessage = string.Empty;
+                    LastConnectStatusCode = null;
+                    _stepdownErrorLogging = false;
+                    _logger.LogInformation("Connected to {Uri}", connection.Uri);
+                    var stream = await MultiplexingStream.CreateAsync(connection.Stream, new MultiplexingStream.Options
+                    {
+                        ProtocolMajorVersion = 3
+                    }, cancellationToken).ConfigureAwait(false);
 
-                var tunnel = new TunnelClient(connection, stream) { Uri = connection.Uri };
+                    var tunnel = new TunnelClient(connection, stream) { Uri = connection.Uri };
 
-                await SetTunnelAsync(tunnel);
+                    // Set _client BEFORE attaching the completion continuation.
+                    // If Completion fires synchronously or very quickly, the guard
+                    // comparison (Volatile.Read(ref _client) == tunnelRef) would
+                    // otherwise see null and incorrectly skip the Disconnected transition.
+                    await SetTunnelAsync(tunnel);
+                    tunnelOwnsConnection = true;
 
-                var tunnelRef = tunnel;
-                _ = tunnel.Completion.ContinueWith(t =>
+                    var tunnelRef = tunnel;
+                    _ = tunnel.Completion.ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            _logger.LogDebug(t.Exception, "Tunnel stream ended with error");
+                        }
+                        // Only set Disconnected if this tunnel is still the active one.
+                        // When a new connection replaces this one (e.g. during reconnect
+                        // with changed endpoint), the old tunnel's completion must not
+                        // affect the new connection's state.
+                        if (Volatile.Read(ref _client) == tunnelRef)
+                        {
+                            UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Replaced tunnel completed - ignoring state change (a newer tunnel is active)");
+                        }
+                    }, TaskScheduler.Default);
+
+                    UpdateState(TunnelConnectionState.Connected);
+                }
+                finally
                 {
-                    if (t.IsFaulted)
+                    if (!tunnelOwnsConnection)
                     {
-                        _logger.LogDebug(t.Exception, "Tunnel stream ended with error");
+                        await connection.DisposeAsync().ConfigureAwait(false);
                     }
-                    if (Volatile.Read(ref _client) == tunnelRef)
-                    {
-                        UpdateState(TunnelConnectionState.Disconnected, "socketCompletion");
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Replaced tunnel completed - ignoring state change (a newer tunnel is active)");
-                    }
-                }, TaskScheduler.Default);
-
-                UpdateState(TunnelConnectionState.Connected);
+                }
             }
             catch (TunnelTransportException ex)
             {
@@ -224,6 +264,13 @@ namespace ReverseTunnel.Yarp.Tunnel
                 }
 
                 UpdateState(ex.StatusCode == 0 ? TunnelConnectionState.Disconnected : TunnelConnectionState.Error);
+            }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+            {
+                // This worker generation was superseded (Reset cancelled it) while connecting.
+                // A newer worker now owns the connection state, so do not dispose its tunnel or
+                // overwrite its state here; this attempt's own transport was released above.
+                _logger.LogDebug(ex, "Superseded connection attempt cancelled; leaving state to the active worker.");
             }
             catch
             {

@@ -10,6 +10,11 @@ namespace ReverseTunnel.Yarp.Tunnel
         private int _errorCount;
         private CancellationTokenSource? _cancellationTokenSource;
         private readonly Func<CancellationToken, Task<bool>> _func;
+        // Tracks the currently running worker loop so that a Reset() can hand its outgoing
+        // task to the replacement worker as a predecessor. The replacement awaits it before
+        // running the work function, which guarantees two worker generations never execute
+        // the work function concurrently (e.g. an in-flight connect racing a fresh one).
+        private Task _workerTask = Task.CompletedTask;
 
 
         public WorkerWithBackoff(TimeSpan initialDelay, TimeSpan maxDelay, Func<CancellationToken, Task<bool>> func, params CancellationToken[] cancellationTokens)
@@ -19,15 +24,32 @@ namespace ReverseTunnel.Yarp.Tunnel
             _errorCount = 0;
             _cancellationTokenSource = new();
             _func = func;
-            CreateWorker([_cancellationTokenSource.Token, ..cancellationTokens]);
+            CreateWorker(null, [_cancellationTokenSource.Token, ..cancellationTokens]);
         }
 
-        private void CreateWorker(params CancellationToken[] tokens)
+        private void CreateWorker(Task? predecessor, params CancellationToken[] tokens)
         {
             var cts = CancellationTokenSource.CreateLinkedTokenSource(tokens);
             var token = cts.Token;
-            _ = Task.Run(async () =>
+            _workerTask = Task.Run(async () =>
             {
+                // Wait for the worker generation this one replaces to fully unwind before
+                // running the work function, so a cancelled-but-still-running attempt never
+                // overlaps a new one. Its outcome (including cancellation/failure) is not ours.
+                if (predecessor is not null)
+                {
+                    try
+                    {
+#pragma warning disable VSTHRD003 // Intentional: awaiting the previous worker generation we started ourselves, to serialize the work function.
+                        await predecessor.ConfigureAwait(false);
+#pragma warning restore VSTHRD003
+                    }
+                    catch
+                    {
+                        // The predecessor generation's failure is not relevant to this one.
+                    }
+                }
+
                 try
                 {
                     while (!token.IsCancellationRequested)
@@ -47,12 +69,13 @@ namespace ReverseTunnel.Yarp.Tunnel
                 }
                 catch (Exception)
                 {
-                    // Unexpected error in the worker function - increment error count and restart the loop
+                    // Unexpected error in the worker function - increment error count and restart the loop.
+                    // This is the same worker generation continuing, so no predecessor handoff is needed.
                     _errorCount = Math.Min(_errorCount + 1, 20);
                     var currentCts = _cancellationTokenSource;
                     if (currentCts is not null && !currentCts.IsCancellationRequested)
                     {
-                        CreateWorker(currentCts.Token);
+                        CreateWorker(null, currentCts.Token);
                     }
                 }
                 finally
@@ -85,13 +108,16 @@ namespace ReverseTunnel.Yarp.Tunnel
             _errorCount = 0;
             CancellationTokenSource cancellationTokenSource = new();
             var token = cancellationTokenSource.Token;
+            // Capture the outgoing worker so the replacement can await it before it runs the
+            // work function. Cancelling the old token source lets that outgoing worker unwind.
+            var predecessor = _workerTask;
             var oldCancellationTokenSource = Interlocked.Exchange(ref _cancellationTokenSource, cancellationTokenSource);
             if (oldCancellationTokenSource is not null)
             {
                 oldCancellationTokenSource.Cancel();
                 oldCancellationTokenSource.Dispose();
             }
-            CreateWorker([token, ..cancellationTokens]);
+            CreateWorker(predecessor, [token, ..cancellationTokens]);
         }
 
         public void Dispose()

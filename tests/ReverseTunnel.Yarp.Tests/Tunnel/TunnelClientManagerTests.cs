@@ -356,6 +356,74 @@ public class TunnelClientManagerTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // Test 8 – Credentials-only update while DISCONNECTED must not reset the reconnect backoff
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task CredentialsOnlyUpdate_WhenDisconnected_DoesNotResetReconnectBackoff()
+    {
+        // Regression: while disconnected, a credentials refresh (e.g. a periodic JWT rotation)
+        // must NOT restart the reconnect worker. Restarting it would zero the exponential backoff,
+        // so a repeated refresh during an outage would hammer the endpoint every initial-interval
+        // and re-roll a fresh connection attempt against the in-flight one. The refreshed headers
+        // are picked up from the options store on the next scheduled attempt regardless.
+        int createCount = 0;
+        var factoryMock = new Mock<ITunnelClientFactory>();
+        factoryMock.Setup(f => f.CreateAsync())
+            .ReturnsAsync((ClientWebSocket?)null)
+            .Callback(() => Interlocked.Increment(ref createCount));
+        factoryMock.Setup(f => f.GetUriAsync()).ReturnsAsync(new Uri("ws://test.example.com/tunnel/test-id"));
+        factoryMock.Setup(f => f.CreateHttpClient()).Returns(new HttpClient());
+
+        var optionsStore = new TunnelClientOptionsStore(new TunnelClientOptions
+        {
+            TunnelId = "test-id",
+            TunnelHost = "ws://test.example.com",
+            IsEnabled = true
+        });
+
+        // Exponential backoff enabled with a short base so the delay grows quickly, and a large
+        // cap so that once the backoff has grown it stays comfortably above the test's wait window.
+        var listenerOptions = Options.Create(new TunnelListenerOptions
+        {
+            ReconnectInterval = TimeSpan.FromMilliseconds(100),
+            MaxReconnectInterval = TimeSpan.FromSeconds(30),
+            EnableReconnectBackoff = true
+        });
+
+        using var manager = new TunnelClientManager(
+            optionsStore, listenerOptions, factoryMock.Object,
+            NullLogger<TunnelClientManager>.Instance);
+
+        // Let several failed attempts accumulate so the backoff delay has grown large
+        // (>= ~100ms * 2^5 = 3.2s), well beyond the observation window below.
+        var grewTcs = new TaskCompletionSource();
+        _ = Task.Run(async () =>
+        {
+            while (Volatile.Read(ref createCount) < 5)
+                await Task.Delay(10);
+            grewTcs.TrySetResult();
+        });
+        await Task.WhenAny(grewTcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        Assert.True(grewTcs.Task.IsCompleted, "Backoff should have grown through several failed attempts");
+
+        int countBefore = Volatile.Read(ref createCount);
+
+        // Act: credentials-only change (headers only, no endpoint/identity/enabled change).
+        optionsStore.Update(o => o with
+        {
+            RequestHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer refreshed" }
+        });
+
+        // The worker is now deep in an exponential-backoff delay (seconds). If the credentials
+        // update had reset the worker, the backoff would drop back to ~100ms and a new attempt
+        // would fire almost immediately. Within this short window there must be no new attempt.
+        await Task.Delay(500);
+
+        Assert.Equal(countBefore, Volatile.Read(ref createCount));
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
