@@ -6,11 +6,13 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: write   # create the GitHub release
+  id-token: write   # request the OIDC token for NuGet Trusted Publishing
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: production   # must match the nuget.org Trusted Publishing policy
 
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +31,14 @@ jobs:
 
       - run: dotnet pack --no-restore --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
 
+      - name: NuGet login (OIDC → short-lived API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: BoBiene   # nuget.org profile name (package owner); can be moved to ${{ secrets.NUGET_USER }}
+
       - name: Push to NuGet.org
-        run: dotnet nuget push **/Release/*.nupkg --skip-duplicate --api-key ${{ secrets.NUGET_APIKEY }} -s https://api.nuget.org/v3/index.json
+        run: dotnet nuget push **/Release/*.nupkg --skip-duplicate --api-key ${{ steps.login.outputs.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
 
       - name: Create GitHub Release
         env:

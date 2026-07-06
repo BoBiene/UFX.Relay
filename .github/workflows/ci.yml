@@ -34,6 +34,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write     # dorny/test-reporter publishes a check run
 
     steps:
       - uses: actions/checkout@v4
@@ -61,17 +64,51 @@ jobs:
           path: ./test-results/*.trx
           reporter: dotnet-trx
       - name: Pack All Projects
-        run: dotnet pack --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+        run: dotnet pack --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg --output ${{ github.workspace }}/artifacts
+      - name: Upload packages
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            ${{ github.workspace }}/artifacts/*.nupkg
+            ${{ github.workspace }}/artifacts/*.snupkg
+          if-no-files-found: error
+          retention-days: 1
+
+  # Publishing runs only for pushes to main. It is isolated in its own job so it can enter
+  # the 'CI-preview' environment (required by the nuget.org Trusted Publishing policy)
+  # without gating pull-request builds, which never reach this job.
+  publish:
+    needs: build
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    environment: CI-preview   # must match the nuget.org Trusted Publishing policy
+    permissions:
+      contents: read
+      packages: write   # push to GitHub Packages
+      id-token: write   # request the OIDC token for NuGet Trusted Publishing
+
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: artifacts
       - name: Push to GitHub Packages
-        if: ${{ github.event_name != 'pull_request' }}
-        run: |
-          dotnet nuget push **/Release/*.nupkg --skip-duplicate \
-            --api-key ${{ secrets.GITHUB_TOKEN }} \
-            --skip-duplicate \
-            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+        run: dotnet nuget push "artifacts/*.nupkg" --skip-duplicate --api-key ${{ secrets.GITHUB_TOKEN }} --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+      - name: NuGet login (OIDC → short-lived API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: BoBiene   # nuget.org profile name (package owner); can be moved to ${{ secrets.NUGET_USER }}
       - name: Push to NuGet.org
-        if: ${{ github.event_name != 'pull_request' }}
-        run: dotnet nuget push **/Release/*.nupkg --skip-duplicate --api-key ${{ secrets.NUGET_APIKEY }} -s https://api.nuget.org/v3/index.json
+        run: dotnet nuget push "artifacts/*.nupkg" --skip-duplicate --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+
   docker:
     runs-on: ubuntu-latest
     # only run if in 'unifiedfx/UFX.Relay' -> fix for forked repos
