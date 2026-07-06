@@ -19,7 +19,7 @@
     <PackageProjectUrl>https://github.com/BoBiene/UFX.Relay</PackageProjectUrl>
     <PackageIcon>ReverseTunnel.Yarp.Logo.png</PackageIcon>
     <PackageTags>Relay Tunnel YARP ReverseTunnel C# .NET</PackageTags>
-    <PackageReadme>README.md</PackageReadme>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <!-- Common compile parameters -->
   <PropertyGroup>
