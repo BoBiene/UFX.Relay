@@ -149,6 +149,50 @@ public class RegistryAndForwardingTests
         Assert.Equal("forwarded", await reader.ReadToEndAsync());
     }
 
+    [Theory]
+    [InlineData(TunnelTransportKind.WebSocket)]
+    [InlineData(TunnelTransportKind.Grpc)]
+    public async Task InternalForwarder_ForwardsToOwnerRegardlessOfOwnerTransport(TunnelTransportKind ownerTransport)
+    {
+        // Mixed-mode replica set: a tunnel may be owned over WebSocket on one instance and over
+        // gRPC on another. Cross-instance forwarding is a plain HTTP hop to the owner's internal
+        // endpoint and must not depend on which transport the owner accepted the tunnel on.
+        var registry = new InMemoryTunnelRegistry();
+        var now = DateTimeOffset.UtcNow;
+        await registry.RegisterAsync(new TunnelRegistration(
+            "tunnel-1",
+            "instance-a",
+            new Uri("https://instance-a:8080"),
+            ownerTransport,
+            now,
+            now.AddMinutes(1),
+            "connection-1"), CancellationToken.None);
+
+        HttpRequestMessage? forwardedRequest = null;
+        var handler = new DelegateHandler(request =>
+        {
+            forwardedRequest = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("owner-response", Encoding.UTF8, "text/plain")
+            };
+        });
+        var forwarder = CreateForwarder(registry, handler);
+        var context = new DefaultHttpContext();
+        context.Request.Method = HttpMethods.Get;
+        context.Request.Scheme = "https";
+        context.Request.Host = new HostString("public.example");
+        context.Request.Path = "/tunnel/tunnel-1/hello";
+        context.Response.Body = new MemoryStream();
+
+        var handled = await forwarder.TryForwardAsync(context, "tunnel-1", CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Equal(new Uri("https://instance-a:8080/tunnel/tunnel-1/hello"), forwardedRequest?.RequestUri);
+        Assert.True(forwardedRequest?.Headers.Contains("X-ReverseTunnel-Forwarded-By"));
+    }
+
     [Fact]
     public async Task InternalForwarder_RejectsForwardingLoop()
     {
