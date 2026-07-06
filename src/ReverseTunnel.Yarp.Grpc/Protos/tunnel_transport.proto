@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option csharp_namespace = "ReverseTunnel.Yarp.Grpc.Protocol";
+
+package reverse_tunnel;
+
+service TunnelTransport {
+  rpc Connect(stream TunnelMessage) returns (stream TunnelMessage);
+}
+
+message TunnelMessage {
+  oneof kind {
+    TunnelConnect connect = 1;
+    TunnelFrame frame = 2;
+  }
+}
+
+message TunnelConnect {
+  string tunnel_id = 1;
+  string connection_id = 2;
+}
+
+message TunnelFrame {
+  bytes payload = 1;
+  uint64 sequence = 2;
+}

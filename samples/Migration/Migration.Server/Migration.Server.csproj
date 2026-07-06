@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nerdbank.Streams" Version="2.11.74" />
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The migration server references both transports so old and new clients can coexist. -->
+    <ProjectReference Include="..\..\..\src\ReverseTunnel.Yarp\ReverseTunnel.Yarp.csproj" />
+    <ProjectReference Include="..\..\..\src\ReverseTunnel.Yarp.Grpc\ReverseTunnel.Yarp.Grpc.csproj" />
+  </ItemGroup>
+</Project>

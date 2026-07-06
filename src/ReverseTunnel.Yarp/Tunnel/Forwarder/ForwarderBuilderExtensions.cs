@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ReverseTunnel.Yarp.Abstractions;
+using ReverseTunnel.Yarp.Tunnel.Registry;
+using ReverseTunnel.Yarp.Tunnel.Transport;
 
 namespace ReverseTunnel.Yarp.Tunnel.Forwarder;
 
@@ -18,6 +20,9 @@ public static class ForwarderBuilderExtensions
     {
         services.AddTunnelForwarderInternal(forwarderOptions);
         services.TryAddSingleton<ITunnelClientFactory, HostTunnelClientFactory>();
+        services.TryAddSingleton<WebSocketTunnelClientTransport>();
+        services.TryAddSingleton<ITunnelClientTransport>(provider => provider.GetRequiredService<WebSocketTunnelClientTransport>());
+        services.TryAddSingleton<ITunnelServerTransport, WebSocketTunnelServerTransport>();
         services.TryAddSingleton<ITunnelHostManager, TunnelHostManager>();
         return services;
     }
@@ -39,6 +44,10 @@ public static class ForwarderBuilderExtensions
         services.AddSingleton<TunnelForwarderHttpClientFactory>();
         services.AddSingleton<TunnelForwarderMiddleware>();
         services.TryAddSingleton<ITunnelCollectionProvider, TunnelCollection>();
+        services.TryAddSingleton<ITunnelRegistry, InMemoryTunnelRegistry>();
+        services.TryAddSingleton<ReverseTunnelInstanceInfo>();
+        services.TryAddSingleton<InternalTunnelRequestForwarder>();
+        services.AddOptions<ReverseTunnelOptions>();
 
         return services;
     }

@@ -7,6 +7,13 @@ This format is based on Keep a Changelog and follows Semantic Versioning princip
 ## [Unreleased]
 
 ### Added
+- Transport abstraction (`ITunnelClientTransport` / `ITunnelServerTransport`) with WebSocket lifted onto it; WebSocket stays the default. Transport is selectable via `ReverseTunnelOptions.Transport` / `TunnelClientOptions.Transport` or configuration.
+- Optional gRPC tunnel transport in `ReverseTunnel.Yarp.Grpc` using bidirectional streaming (`AddReverseTunnelGrpcTransport` / `MapReverseTunnelGrpcTransport`). A server can expose WebSocket and gRPC tunnels on the same host/port for gradual migration.
+- Shared gRPC channel support: `ReverseTunnelGrpcTransportOptions.CallInvokerFactory` lets the tunnel transport reuse an application-owned `GrpcChannel`/`CallInvoker` (and does not dispose it).
+- Replica-set foundation: `ITunnelRegistry` with `InMemoryTunnelRegistry`, per-instance `InstanceId`/`InternalEndpoint`, and owner-instance HTTP forwarding (`InternalTunnelRequestForwarder`) with `X-ReverseTunnel-Forwarded-By` loop prevention.
+- `samples/Sample.Chat.*`: shared-channel chat sample (ReverseTunnel gRPC transport plus unary and bidirectional chat gRPC services on one client `GrpcChannel`) with a Blazor UI.
+- `samples/Migration`: a server offering WebSocket + gRPC simultaneously with a legacy WebSocket client and a modern gRPC client, demonstrating a client-by-client migration path.
+- Documentation: `docs/transports-and-replicas.md` and sample READMEs covering transport selection, HTTP/2 requirements, shared channel, and replica-set mode.
 - Copilot instructions file with coding, changelog, and release standards.
 - `CHANGELOG.md` with policy and baseline entry.
 - Unit test project `tests/ReverseTunnel.Yarp.Tests` covering `TunnelClientManager` reconnect feedback loop fix, `WorkerWithBackoff`, `TunnelClientOptionsStore`, `TunnelCollection`, `HttpContextExtensions`, and `TunnelClientOptions`.
@@ -20,6 +27,7 @@ This format is based on Keep a Changelog and follows Semantic Versioning princip
 - `TunnelClientManager`: `State` and `ActiveClient` are now `internal` properties (via `InternalsVisibleTo`) to support test assertions without changing the public API.
 
 ### Fixed
+- Tunnel registry renewal: the owner instance now renews its registration at half the `RegistryTtl` while a tunnel is connected, and `InMemoryTunnelRegistry.RenewAsync` slides the expiry window forward. Long-running tunnels no longer expire from the registry, which previously broke cross-instance forwarding after `RegistryTtl`.
 - `TunnelClientManager`: credentials-only options update (e.g. JWT refresh) while already connected no longer tears down and re-establishes the connection, preventing an infinite reconnect feedback loop.
 - `TunnelClientManager`: replaced tunnel's `Completion` callback now guards against the stale tunnel incorrectly resetting state to `Disconnected` after a newer tunnel has taken over.
 - `TunnelClientManager`: a credentials-only options update while **disconnected** no longer restarts the reconnect worker. Previously it reset the exponential backoff, so a repeated credentials refresh during an outage retried at the initial interval instead of backing off. Refreshed headers are still applied on the next scheduled attempt.
