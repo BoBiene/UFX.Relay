@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ReverseTunnel.Yarp.Abstractions;
 using Yarp.ReverseProxy.Configuration;
@@ -13,7 +14,8 @@ public class TunnelForwarderMiddleware(
     IOptions<TunnelForwarderOptions> options,
     ITunnelIdProvider tunnelIdProvider,
     ITunnelHostManager tunnelManager,
-    InternalTunnelRequestForwarder internalForwarder) : IMiddleware
+    InternalTunnelRequestForwarder internalForwarder,
+    ILogger<TunnelForwarderMiddleware> logger) : IMiddleware
 {
     private HttpTransformer? transformer;
 
@@ -38,9 +40,33 @@ public class TunnelForwarderMiddleware(
             return;
         }
 
-        var client = clientFactory.CreateClient(new ForwarderHttpClientContext { NewConfig = HttpClientConfig.Empty });
+        // Disposed once the response is complete; SendAsync does not return until then.
+        using var client = clientFactory.CreateClient(new ForwarderHttpClientContext { NewConfig = HttpClientConfig.Empty });
         var destinationPrefix = $"http://{context.Request.Host}";
         if (options.Value.Transformer != null) transformer ??= builder.Create(options.Value.Transformer);
-        _ = await forwarder.SendAsync(context, destinationPrefix, client, ForwarderRequestConfig.Empty, transformer ?? HttpTransformer.Default).ConfigureAwait(false);
+
+        var error = await forwarder
+            .SendAsync(context, destinationPrefix, client, ForwarderRequestConfig.Empty, transformer ?? HttpTransformer.Default)
+            .ConfigureAwait(false);
+
+        if (error == ForwarderError.None) return;
+
+        var exception = context.GetForwarderErrorFeature()?.Exception;
+        logger.LogInformation(
+            "Forwarding over tunnel {TunnelId} failed with {ForwarderError} for {Path}.",
+            tunnelId,
+            error,
+            context.Request.Path.Value ?? string.Empty);
+
+        // Nothing can be said to the caller once the response has started.
+        if (context.Response.HasStarted) return;
+
+        if (options.Value.OnForwarderError is { } handler)
+        {
+            await handler(context, tunnelId, error, exception).ConfigureAwait(false);
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status502BadGateway;
     }
 }

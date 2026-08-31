@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Nerdbank.Streams;
 using ReverseTunnel.Yarp.Abstractions;
 using Yarp.ReverseProxy.Forwarder;
@@ -8,7 +10,13 @@ using Yarp.ReverseProxy.Forwarder;
 namespace ReverseTunnel.Yarp.Tunnel.Forwarder;
 
 
-public class TunnelForwarderHttpClientFactory(ITunnelHostManager tunnelManager, IHttpContextAccessor accessor, ITunnelIdProvider tunnelIdProvider) : IForwarderHttpClientFactory
+public class TunnelForwarderHttpClientFactory(
+    ITunnelHostManager tunnelManager,
+    IHttpContextAccessor accessor,
+    ITunnelIdProvider tunnelIdProvider,
+    ITunnelCollectionProvider tunnelCollectionProvider,
+    IOptions<TunnelForwarderOptions> options,
+    ILogger<TunnelForwarderHttpClientFactory> logger) : IForwarderHttpClientFactory
 {
 
     //TODO: Consider creating a pool of HttpMessageInvoker instances to reuse up to the limit of a MultiplexingStream channel limit
@@ -35,10 +43,54 @@ public class TunnelForwarderHttpClientFactory(ITunnelHostManager tunnelManager, 
                 var relayId = await tunnelIdProvider.GetTunnelIdAsync() ?? throw new KeyNotFoundException();
                 var tunnel = await tunnelManager.GetOrCreateTunnelAsync(httpContext, relayId, token);
                 if (tunnel == null) throw new ConnectionAbortedException($"Tunnel {relayId} not found");
-                var channel = await tunnel.GetChannelAsync(tunnel is TunnelHost ? httpContext.Connection.Id : null, token);
-                return channel.AsStream();
+                try
+                {
+                    var channel = await tunnel.GetChannelAsync(
+                        tunnel is TunnelHost ? httpContext.Connection.Id : null,
+                        options.Value.ChannelOfferTimeout,
+                        token);
+                    return channel.AsStream();
+                }
+                catch (TunnelChannelOfferTimeoutException ex)
+                {
+                    // The tunnel looks connected but does not serve channels, so it is taken out of
+                    // service instead of failing every following request the same way.
+                    await TakeOutOfServiceAsync(httpContext, relayId, tunnel, ex);
+                    throw new ConnectionAbortedException(ex.Message, ex);
+                }
             },
         };
         return new HttpMessageInvoker(handler, true);
+    }
+
+    private async Task TakeOutOfServiceAsync(HttpContext httpContext, string tunnelId, Tunnel tunnel, TunnelChannelOfferTimeoutException ex)
+    {
+        logger.LogInformation(
+            "Tunnel {TunnelId} for host {Host} did not accept a channel within {TimeoutSeconds}s; taking it out of service. {Diagnostics}",
+            tunnelId,
+            httpContext.Request.Host.Value,
+            ex.Timeout.TotalSeconds,
+            tunnel.GetDiagnostics());
+
+        tunnel.Invalidate("channel offer timed out");
+
+        if (!options.Value.InvalidateTunnelOnOfferTimeout) return;
+
+        try
+        {
+            var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(httpContext, CancellationToken.None).ConfigureAwait(false);
+            if (!tunnels.TryRemoveTunnel((tunnelId, tunnel))) return;
+
+            // Detached: disposal closes the transport, which the request must not wait for.
+            _ = Task.Run(async () =>
+            {
+                try { await tunnel.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception disposeEx) { logger.LogDebug(disposeEx, "Disposing unusable tunnel {TunnelId} failed.", tunnelId); }
+            });
+        }
+        catch (Exception removeEx)
+        {
+            logger.LogDebug(removeEx, "Removing unusable tunnel {TunnelId} failed.", tunnelId);
+        }
     }
 }
