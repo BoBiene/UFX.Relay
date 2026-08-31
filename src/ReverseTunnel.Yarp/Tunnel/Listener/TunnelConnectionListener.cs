@@ -53,7 +53,10 @@ public sealed class TunnelConnectionListener : IConnectionListener
             else
             {
                 var tunnel = _endpoint.Tunnel;
-                if (tunnel == null || tunnel.Completion.Status == TaskStatus.RanToCompletion)
+                // Any completed Completion means the stream is gone - Faulted and Canceled count,
+                // not just RanToCompletion. IsConnected also covers a tunnel that was invalidated
+                // because its channel offers stopped being accepted.
+                if (tunnel == null || tunnel.Completion.IsCompleted || !tunnel.IsConnected)
                 {
                     _logger.LogWarning("No tunnel available ({Tunnel}, {TunnelStatus})", tunnel, tunnel?.Completion.Status);
                     await Task.Delay(_options.Value.DelayWhenDisconnected, linkedToken);

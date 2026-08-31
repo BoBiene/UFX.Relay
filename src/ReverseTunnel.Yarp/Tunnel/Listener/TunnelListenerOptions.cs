@@ -24,4 +24,10 @@ public class TunnelListenerOptions
     /// Specifies the maximum interval for reconnection attempts when exponential backoff is enabled. Default is 2 minutes.
     /// </summary>
     public TimeSpan MaxReconnectInterval { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// How long the connection state may stay <c>Connecting</c> without completing before the
+    /// reconnect worker forces it back to <c>Disconnected</c> and retries.
+    /// </summary>
+    public TimeSpan ConnectingWatchdogTimeout { get; set; } = TimeSpan.FromSeconds(60);
 }

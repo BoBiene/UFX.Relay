@@ -30,8 +30,11 @@ namespace ReverseTunnel.Yarp.Tunnel
             var tunnels = await tunnelCollectionProvider.GetTunnelCollectionAsync(context, cancellationToken).ConfigureAwait(false);
             if (tunnels.TryGetTunnel(tunnelId, out var existingTunnel)) return existingTunnel;
 
+            // Bounded on purpose: this runs inside a request, and an unbounded retry loop kept the
+            // caller waiting indefinitely whenever the upstream was unreachable.
+            const int C_MAX_CONNECT_ATTEMPTS = 3;
             TunnelTransportConnection? connection = null;
-            while (connection is null)
+            for (int attempt = 1; connection is null && attempt <= C_MAX_CONNECT_ATTEMPTS; attempt++)
             {
                 try
                 {
@@ -42,16 +45,25 @@ namespace ReverseTunnel.Yarp.Tunnel
                 catch (TunnelTransportException ex)
                 {
                     logger.LogDebug(ex, "Tunnel transport error: {Uri}, {Message}", ex.Uri, ex.Message);
+                    if (attempt == C_MAX_CONNECT_ATTEMPTS)
+                    {
+                        logger.LogInformation(
+                            "Giving up connecting tunnel {TunnelId} after {Attempts} attempts: {Message}",
+                            tunnelId, C_MAX_CONNECT_ATTEMPTS, ex.Message);
+                        return null;
+                    }
                     await Task.Delay(5000, cancellationToken).ConfigureAwait(false);
                 }
             }
+
+            if (connection is null) return null;
 
             logger.LogInformation("Connected to {Uri}", connection.Uri);
             var stream = await MultiplexingStream.CreateAsync(connection.Stream, new MultiplexingStream.Options
             {
                 ProtocolMajorVersion = 3
             }, cancellationToken).ConfigureAwait(false);
-            var tunnel = new TunnelClient(connection, stream) { Uri = connection.Uri };
+            var tunnel = new TunnelClient(connection, stream, logger) { Uri = connection.Uri };
             tunnel.Completion.ContinueWith(_ =>
             {
                 logger.LogDebug("Removing tunnel {TunnelId}, uri: {Uri}", tunnelId, connection.Uri);

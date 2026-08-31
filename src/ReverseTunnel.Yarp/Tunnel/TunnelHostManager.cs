@@ -86,9 +86,35 @@ public class TunnelHostManager : ITunnelHostManager
             ProtocolMajorVersion = 3
         }, cancellationToken).ConfigureAwait(false);
 
-        var tunnel = new TunnelHost(connection, stream) { Uri = connection.Uri };
+        // The client sends this so both sides' logs can be joined for one connection.
+        string? clientConnectionId = context?.Request.Headers[Transport.WebSocketTunnelClientTransport.ConnectionIdHeader];
+        var tunnel = new TunnelHost(connection, stream, logger)
+        {
+            Uri = connection.Uri,
+            ConnectionId = string.IsNullOrEmpty(clientConnectionId) ? connectionId : clientConnectionId
+        };
+
+        // The remote endpoint is logged because a changed source IP or port between reconnects
+        // indicates a NAT rebind.
+        logger.LogInformation(
+            "Tunnel connected: {TunnelId} on instance {InstanceId}. remote={RemoteAddress}:{RemotePort}, transportKind={TransportKind}, {Diagnostics}",
+            tunnelId,
+            instanceInfo.InstanceId,
+            context?.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            context?.Connection.RemotePort ?? 0,
+            transportKind,
+            tunnel.GetDiagnostics());
+
         tunnels.AddOrUpdate(tunnelId, _ => tunnel, (_, oldTunnel) =>
         {
+            // A second client connecting with the same tunnel id evicts the first. Logged so that
+            // two clients sharing an id can be told apart from ordinary reconnects.
+            logger.LogInformation(
+                "Tunnel replaced: {TunnelId} on instance {InstanceId}. replaced=[{Replaced}], newConnectionId={NewConnectionId}",
+                tunnelId,
+                instanceInfo.InstanceId,
+                oldTunnel.GetDiagnostics(),
+                tunnel.ConnectionId ?? "unknown");
             oldTunnel.Dispose();
             return tunnel;
         });
@@ -98,7 +124,6 @@ public class TunnelHostManager : ITunnelHostManager
             shutdownDisposer) ?? default;
 
         var registered = await RegisterAsync(tunnelId, transportKind, connectionId, cancellationToken).ConfigureAwait(false);
-        logger.LogDebug("Tunnel connected: {TunnelId} on instance {InstanceId}", tunnelId, instanceInfo.InstanceId);
 
         // While the tunnel is alive its registry entry must stay fresh so other replicas can
         // resolve the owning instance; without renewal the entry would expire after RegistryTtl
@@ -109,9 +134,18 @@ public class TunnelHostManager : ITunnelHostManager
         var renewalTask = registered
             ? RenewRegistrationLoopAsync(tunnelId, renewalCts!.Token)
             : Task.CompletedTask;
+
+        // stream.Completion alone is not enough: a WebSocket that aborts on its keep-alive timeout
+        // leaves it pending, so the transport is watched as well.
+        using var transportWatchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var transportWatch = WatchTransportAsync(tunnel, transportWatchCts.Token);
         try
         {
-            await stream.Completion.ConfigureAwait(false);
+            await Task.WhenAny(stream.Completion, transportWatch).ConfigureAwait(false);
+            if (stream.Completion.IsCompleted)
+            {
+                await stream.Completion.ConfigureAwait(false);
+            }
         }
         catch (Exception e)
         {
@@ -119,6 +153,8 @@ public class TunnelHostManager : ITunnelHostManager
         }
         finally
         {
+            await transportWatchCts.CancelAsync().ConfigureAwait(false);
+
             if (renewalCts is not null)
             {
                 await renewalCts.CancelAsync().ConfigureAwait(false);
@@ -135,7 +171,27 @@ public class TunnelHostManager : ITunnelHostManager
             tunnels.TryRemoveTunnel((tunnelId, tunnel));
             await shutdownDisposer.DisposeTunnelAsync().ConfigureAwait(false);
             await tunnelRegistry.UnregisterAsync(tunnelId, instanceInfo.InstanceId, CancellationToken.None).ConfigureAwait(false);
-            logger.LogDebug("Tunnel disconnected: {TunnelId} on instance {InstanceId}", tunnelId, instanceInfo.InstanceId);
+            logger.LogInformation(
+                "Tunnel disconnected: {TunnelId} on instance {InstanceId}. {Diagnostics}",
+                tunnelId,
+                instanceInfo.InstanceId,
+                tunnel.GetDiagnostics());
+        }
+    }
+
+    /// <summary>Completes once the tunnel stops being usable.</summary>
+    private static async Task WatchTransportAsync(TunnelHost tunnel, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (!tunnel.IsConnected) return;
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 

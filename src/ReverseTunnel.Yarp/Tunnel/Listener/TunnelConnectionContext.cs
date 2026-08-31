@@ -26,6 +26,8 @@ public class TunnelConnectionContext : ConnectionContext,
         this.endpoint = endpoint;
         ConnectionId = connectionId;
         Transport = channel;
+        // The tunnel transport runs its own keep-alive, so Kestrel must not apply idle handling.
+        HasInherentKeepAlive = true;
         _ = this.channel.Completion.ContinueWith(_ => cts.Cancel(), TaskScheduler.Default);
         Features.Set<IConnectionInherentKeepAliveFeature>(this);
         // Features.Set<IConnectionEndPointFeature>(this);
@@ -43,6 +45,7 @@ public class TunnelConnectionContext : ConnectionContext,
     public override IDictionary<object, object?> Items { get; set; } = new ConnectionItems();
     public override IDuplexPipe Transport { get; set; }
     public bool HasInherentKeepAlive { get; }
+
     public override CancellationToken ConnectionClosed {
         get => cts.Token;
         set { }

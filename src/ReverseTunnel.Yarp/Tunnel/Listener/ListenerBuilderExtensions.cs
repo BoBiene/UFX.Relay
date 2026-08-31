@@ -15,6 +15,7 @@ public static class ListenerBuilderExtensions
 {
     private static bool tunnelListenerAdded;
     private static ILogger logger = LoggerFactory.Create(logBuilder => logBuilder.AddConsole()).CreateLogger(typeof(ListenerBuilderExtensions));
+
     public static IWebHostBuilder AddTunnelListener(this IWebHostBuilder builder, Action<TunnelListenerOptions>? tunnelOptions = null, bool includeDefaultUrls = false)
     {
         if (tunnelListenerAdded)

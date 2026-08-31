@@ -11,8 +11,12 @@ public sealed class ClientTunnelClientFactory(ITunnelClientOptionsStore options,
         if (tunnelId == null) return null;
         var webSocket = new ClientWebSocket();
         webSocket.Options.CollectHttpResponseDetails = true;
-        webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
-        
+        webSocket.Options.KeepAliveInterval = options.Current.KeepAliveInterval;
+#if NET9_0_OR_GREATER
+        // Detects a path that stopped carrying data. Requires .NET 9 or later.
+        webSocket.Options.KeepAliveTimeout = options.Current.KeepAliveTimeout;
+#endif
+
         foreach (var header in options.Current.RequestHeaders)
         {
             webSocket.Options.SetRequestHeader(header.Key, header.Value);

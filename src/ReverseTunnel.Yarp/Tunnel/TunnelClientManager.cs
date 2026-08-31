@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nerdbank.Streams;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using ReverseTunnel.Yarp.Abstractions;
 using ReverseTunnel.Yarp.Tunnel.Listener;
@@ -23,6 +24,7 @@ namespace ReverseTunnel.Yarp.Tunnel
         private const int OptionsChangedBit = 1;
         private const int EndpointChangedBit = 2;
         private bool _stepdownErrorLogging = false;
+        private long _connectingSinceTimestamp = Stopwatch.GetTimestamp();
         private readonly WorkerWithBackoff _reconnectWorker;
         public event EventHandler<TunnelConnectionState>? ConnectionStateChanged;
 
@@ -117,10 +119,39 @@ namespace ReverseTunnel.Yarp.Tunnel
 
         public bool IsEnabled => _optionsStore.Current.IsEnabled;
 
+        /// <summary>
+        /// Corrects a state that no longer matches reality: a <c>Connecting</c> that has stopped
+        /// progressing, or a <c>Connected</c> whose tunnel is gone. Both are cached in a field, so
+        /// without this they would persist until something else happened to update them.
+        /// </summary>
+        private void ReconcileState()
+        {
+            if (_state == TunnelConnectionState.Connecting &&
+                Stopwatch.GetElapsedTime(Volatile.Read(ref _connectingSinceTimestamp)) > _listenerOptions.Value.ConnectingWatchdogTimeout)
+            {
+                _logger.LogWarning(
+                    "Tunnel stuck in Connecting for more than {Timeout}; forcing a retry.",
+                    _listenerOptions.Value.ConnectingWatchdogTimeout);
+                UpdateState(TunnelConnectionState.Disconnected, "connectingWatchdog");
+                return;
+            }
+
+            if (_state != TunnelConnectionState.Connected) return;
+
+            TunnelClient? active = Volatile.Read(ref _client);
+            if (active is not null && active.IsConnected) return;
+
+            UpdateState(TunnelConnectionState.Disconnected, "connectedReconciliation");
+        }
+
         private async Task<bool> ReconnectLoopAsync(CancellationToken token)
         {
-            bool doBackoff = _listenerOptions.Value.EnableReconnectBackoff;
+            // Backoff applies only after an attempt that failed.
+            bool doBackoff = false;
             int flags = Interlocked.Exchange(ref _pendingOptionsChange, 0);
+
+            ReconcileState();
+
             if ((flags & OptionsChangedBit) != 0)
             {
                 bool endpointChanged = (flags & EndpointChangedBit) != 0;
@@ -134,12 +165,12 @@ namespace ReverseTunnel.Yarp.Tunnel
                     }
                     else
                     {
-                        await ConnectInternalAsync(token);
+                        doBackoff = !await ConnectInternalAsync(token) && _listenerOptions.Value.EnableReconnectBackoff;
                     }
                 }
                 else
                 {
-                    await SetTunnelAsync(null);
+                    PublishTunnel(null);
                     UpdateState(TunnelConnectionState.Disconnected);
                 }
             }
@@ -147,7 +178,7 @@ namespace ReverseTunnel.Yarp.Tunnel
             {
                 if (_state != TunnelConnectionState.Disconnected)
                 {
-                    await SetTunnelAsync(null);
+                    PublishTunnel(null);
                     UpdateState(TunnelConnectionState.Disconnected);
                 }
             }
@@ -157,13 +188,14 @@ namespace ReverseTunnel.Yarp.Tunnel
             }
             else
             {
-                await ConnectInternalAsync(token);
+                doBackoff = !await ConnectInternalAsync(token) && _listenerOptions.Value.EnableReconnectBackoff;
             }
 
             return doBackoff;
         }
 
-        private async Task ConnectInternalAsync(CancellationToken cancellationToken)
+        /// <returns><c>true</c> when the attempt reached <see cref="TunnelConnectionState.Connected"/>.</returns>
+        private async Task<bool> ConnectInternalAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -173,9 +205,9 @@ namespace ReverseTunnel.Yarp.Tunnel
                 if (string.IsNullOrWhiteSpace(tunnelId))
                 {
                     _logger.LogWarning("Tunnel connection failed because no tunnel id is configured.");
-                    await SetTunnelAsync(null);
+                    PublishTunnel(null);
                     UpdateState(TunnelConnectionState.Error);
-                    return;
+                    return false;
                 }
 
                 var connection = await _clientTransport.ConnectAsync(
@@ -185,9 +217,9 @@ namespace ReverseTunnel.Yarp.Tunnel
                 if (connection == null)
                 {
                     _logger.LogWarning("Tunnel transport connection failed (transport returned null).");
-                    await SetTunnelAsync(null);
+                    PublishTunnel(null);
                     UpdateState(TunnelConnectionState.Error);
-                    return;
+                    return false;
                 }
 
                 // The transport connection is owned by this method until it is handed to a
@@ -206,14 +238,23 @@ namespace ReverseTunnel.Yarp.Tunnel
                         ProtocolMajorVersion = 3
                     }, cancellationToken).ConfigureAwait(false);
 
-                    var tunnel = new TunnelClient(connection, stream) { Uri = connection.Uri };
+                    var tunnel = new TunnelClient(connection, stream, _logger)
+                    {
+                        Uri = connection.Uri,
+                        ConnectionId = connection.ConnectionId
+                    };
+                    _logger.LogInformation(
+                        "Tunnel connected. ConnectionId={ConnectionId}, Uri={Uri}",
+                        tunnel.ConnectionId ?? "unknown",
+                        connection.Uri?.ToString() ?? "unknown");
 
-                    // Set _client BEFORE attaching the completion continuation.
-                    // If Completion fires synchronously or very quickly, the guard
-                    // comparison (Volatile.Read(ref _client) == tunnelRef) would
-                    // otherwise see null and incorrectly skip the Disconnected transition.
-                    await SetTunnelAsync(tunnel);
+                    // The tunnel owns the transport from here, so a failure tearing down the
+                    // previous connection does not make the finally below dispose this one.
                     tunnelOwnsConnection = true;
+
+                    // Publish before attaching the completion continuation, so its guard
+                    // (Volatile.Read(ref _client) == tunnelRef) sees this tunnel.
+                    PublishTunnel(tunnel);
 
                     var tunnelRef = tunnel;
                     _ = tunnel.Completion.ContinueWith(t =>
@@ -237,6 +278,7 @@ namespace ReverseTunnel.Yarp.Tunnel
                     }, TaskScheduler.Default);
 
                     UpdateState(TunnelConnectionState.Connected);
+                    return true;
                 }
                 finally
                 {
@@ -248,7 +290,7 @@ namespace ReverseTunnel.Yarp.Tunnel
             }
             catch (TunnelTransportException ex)
             {
-                await SetTunnelAsync(null);
+                PublishTunnel(null);
                 LastConnectErrorMessage = ex.Message;
                 LastConnectStatusCode = ex.StatusCode;
                 LastErrorResponseBody = ex.ResponseBody;
@@ -274,22 +316,51 @@ namespace ReverseTunnel.Yarp.Tunnel
             }
             catch
             {
-                await SetTunnelAsync(null);
+                PublishTunnel(null);
                 UpdateState(TunnelConnectionState.Error);
             }
+
+            return false;
         }
 
-        private async Task SetTunnelAsync(TunnelClient? tunnel)
+        /// <summary>
+        /// Publishes <paramref name="tunnel"/> as the active one and releases the previous tunnel
+        /// detached, so a healthy new connection never waits on the teardown of the one it replaces.
+        /// The teardown itself is bounded, see TunnelTransportConnection.CloseTimeout.
+        /// </summary>
+        private void PublishTunnel(TunnelClient? tunnel)
         {
             var oldClient = Interlocked.Exchange(ref _client, tunnel);
-            if (oldClient != null)
-                await oldClient.DisposeAsync();
+            if (oldClient is null) return;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await oldClient.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Releasing the previous tunnel failed: {Message}", ex.Message);
+                }
+            });
         }
 
         internal void UpdateState(TunnelConnectionState newState, [CallerMemberName] string? caller = default)
         {
             if (_state != newState)
             {
+                if (_state == TunnelConnectionState.Connected)
+                {
+                    // One event per loss. Detector says which check noticed, and the transport state
+                    // says what kind of loss it was.
+                    _logger.LogInformation(
+                        "Tunnel connection lost. detector={Detector}, newState={NewState}, {Diagnostics}",
+                        caller ?? "unknown",
+                        newState,
+                        Volatile.Read(ref _client)?.GetDiagnostics().ToString() ?? "no active tunnel");
+                }
+
                 if (_state == TunnelConnectionState.Connected || newState == TunnelConnectionState.Error)
                 {
                     _logger.LogInformation("Tunnel connection state changed from {State} to {NewState} by {Caller}", _state, newState, caller);
@@ -299,6 +370,10 @@ namespace ReverseTunnel.Yarp.Tunnel
                     _logger.LogTrace("Tunnel connection state changed from {State} to {NewState} by {Caller}", _state, newState, caller);
                 }
                 _state = newState;
+                if (newState == TunnelConnectionState.Connecting)
+                {
+                    Volatile.Write(ref _connectingSinceTimestamp, Stopwatch.GetTimestamp());
+                }
                 ConnectionStateChanged?.Invoke(this, newState);
             }
         }

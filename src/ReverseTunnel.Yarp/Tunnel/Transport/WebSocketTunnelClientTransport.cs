@@ -6,6 +6,9 @@ namespace ReverseTunnel.Yarp.Tunnel.Transport;
 
 public sealed class WebSocketTunnelClientTransport(ITunnelClientFactory clientFactory) : ITunnelClientTransport
 {
+    /// <summary>Request header carrying the client-generated connection id.</summary>
+    public const string ConnectionIdHeader = "X-Tunnel-Connection-Id";
+
     public TunnelTransportKind Kind => TunnelTransportKind.WebSocket;
 
     public async ValueTask<TunnelTransportConnection?> ConnectAsync(
@@ -17,6 +20,10 @@ public sealed class WebSocketTunnelClientTransport(ITunnelClientFactory clientFa
         {
             return null;
         }
+
+        // Identifies this connection in both peers' logs.
+        string connectionId = Guid.NewGuid().ToString("N");
+        webSocket.Options.SetRequestHeader(ConnectionIdHeader, connectionId);
 
         var uri = await clientFactory.GetUriAsync().ConfigureAwait(false);
         try
@@ -58,18 +65,28 @@ public sealed class WebSocketTunnelClientTransport(ITunnelClientFactory clientFa
             {
                 if (webSocket.State == WebSocketState.Open)
                 {
+                    // Bounded: on a dead path with a full send buffer this never returns.
+                    using CancellationTokenSource closeCts = new(TunnelTransportConnection.CloseTimeout);
                     try
                     {
-                        await webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, default).ConfigureAwait(false);
+                        await webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, closeCts.Token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
+                    {
+                    }
+                    catch (WebSocketException)
                     {
                     }
                 }
 
                 webSocket.Dispose();
             },
-            webSocket.Dispose);
+            webSocket.Dispose,
+            isAlive: () => webSocket.State == WebSocketState.Open,
+            describeState: () => $"{WebSocketDiagnostics.Describe(webSocket)}, httpStatus={webSocket.HttpStatusCode}")
+        {
+            ConnectionId = connectionId
+        };
     }
 
     private async Task<string> TryFetchErrorResponseBodyAsync(string wsUrl, CancellationToken cancellationToken)
